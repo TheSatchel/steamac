@@ -1,0 +1,46 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Compatibility launcher for existing guest-agent binaries: exact VR URI and no duplicate startup."""
+import fcntl
+import os
+from pathlib import Path
+import re
+import sys
+import time
+
+args = sys.argv[1:]
+appid = None
+for i, arg in enumerate(args):
+    match = re.fullmatch(r"steam://launch/([1-9][0-9]*)/(?:vr|VR)", arg)
+    if match:
+        appid = match.group(1)
+        args[i] = "steam://launch/" + appid + "/VR"
+if appid:
+    marker = ("AppId=" + appid).encode()
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            if marker in (proc / "cmdline").read_bytes().split(b"\0"):
+                sys.exit(0)
+            if appid == "438100" and (proc / "comm").read_text().strip() == "VRChat.exe":
+                sys.exit(0)
+        except OSError:
+            pass
+    directory = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "satchel-vr-launch"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    with (directory / appid).open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock.seek(0)
+        try:
+            last = float(lock.read())
+        except ValueError:
+            last = 0
+        now = time.time()
+        if last > 0 and 0 <= now - last < 5:
+            sys.exit(0)
+        lock.seek(0)
+        lock.truncate()
+        lock.write(str(now))
+        lock.flush()
+# No shell interpretation: all other Steam arguments retain their original boundaries.
+real = os.environ.get("SATCHEL_STEAM_BIN", "/usr/bin/steam")
+os.execv(real, [real] + args)

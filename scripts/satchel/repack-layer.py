@@ -41,6 +41,12 @@ def main():
             raise RuntimeError('base layer does not contain the expected VR runtime')
         shutil.copyfile(a.runtime, target)
         target.chmod(0o755)
+        for relative in ['usr/lib/steamac/vr-launch-bin/steam',
+                         'usr/lib/systemd/user/fx-progress-agent.service.d/60-satchel-vr.conf']:
+            source = repo / 'guest/layer' / relative
+            target_file = root / relative
+            target_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target_file)
         release = root / 'usr/lib/steamac/satchel-release'
         release.write_text('Satchel tracking fork source=' + commit + '\nruntime-sha256=' + sha(target) + '\n')
         release.chmod(0o644)
@@ -60,7 +66,9 @@ def main():
     manifest = {'kind': 'satchel-vr-layer', 'source_commit': commit, 'base_sha256': sha(a.base),
                 'runtime_sha256': sha(a.runtime), 'layer_sha256': sha(a.output),
                 'modified': ['usr/lib/steamac/vr/runtime/bin/linux64/vrclient.so',
-                             'usr/lib/steamac/satchel-release', 'usr/lib/steamac/layer-release']}
+                             'usr/lib/steamac/satchel-release', 'usr/lib/steamac/layer-release',
+                             'usr/lib/steamac/vr-launch-bin/steam',
+                             'usr/lib/systemd/user/fx-progress-agent.service.d/60-satchel-vr.conf']}
     a.output.with_suffix('.manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(json.dumps(manifest))
 

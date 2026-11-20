@@ -43,3 +43,7 @@ For the local build without Apple's optional Metal compiler, the unchanged AIR/m
 - The Sentry SDK is the same checksum-pinned 9.30.0 static artifact, declared directly to avoid downloading unused platform variants and source history. No upstream telemetry endpoint is configured.
 - A temporary loopback-only UDP forward was exercised on the active Mac/SteamOS VM: the guest received and echoed the exact probe bytes. The temporary test forward was removed afterwards.
 - Real Quest hand/body calibration and perceived head latency are still pending deployment and headset testing.
+
+## Existing guest-agent migration
+
+The Steam VR launch selector is case-sensitive in this installation: use `/VR`. The Rust source now emits that selector. Existing disk images receive a narrow `steam` wrapper only in the progress agent's PATH; it normalizes the VR selector, suppresses a second request while a matching game is running, and debounces startup requests for five seconds. The wrapper is included in repacked layers and can also be installed as a per-user service override without replacing the running guest agent. `scripts/satchel/test-launch-wrapper.py` verifies selector case, duplicate suppression and argument boundaries.

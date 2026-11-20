@@ -99,7 +99,7 @@ enum VRHost {
     nonisolated(unsafe) static var guestSend: ((String) -> Bool)?
 
     /// Starts a Steam game in its VR launch mode in the guest (fx-progress-agent `launch-vr`, which runs
-    /// `steam -ifrunning steam://launch/<id>/vr`). False when the VM is not running with VR.
+    /// `steam -ifrunning steam://launch/<id>/VR`). False when the VM is not running with VR.
     @discardableResult
     static func launchInVR(_ appID: Int) -> Bool {
         guard appID > 0, let send = guestSend else { return false }
