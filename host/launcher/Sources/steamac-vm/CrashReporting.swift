@@ -22,14 +22,14 @@ import SystemConfiguration
 /// Volume is kept low: one event per fingerprint per process, a small per-kind and total budget,
 /// and a persistent "already reported" list per fingerprint.
 enum CrashReporting {
-    static let dsn = "https://2af7807225b4fc150d9436d1f16165b8@sentry.fxgam.es/39"
+    static let dsn = ProcessInfo.processInfo.environment["SATCHEL_SENTRY_DSN"] ?? ""
     static let disableEnv = "STEAMAC_SENTRY"
     static let debugEnv = "STEAMAC_SENTRY_DEBUG"
     static let runIdEnv = "STEAMAC_RUN_ID"
     static let noFlag = "--no-crash-reports"
 
     /// Settings / first-run explanation (one line) and the "What is sent" list.
-    static let summary = String(localized: "Crash reports and rare errors go to the FX Steam Launcher developers (Sentry). No personal data.")
+    static let summary = String(localized: "This fork sends no crash reports unless an owner-controlled server is configured.")
     static let whatIsSent = [
         String(localized: "Crash reports of the launcher and the VM process: crash reason, stack traces, loaded libraries."),
         String(localized: "A few errors: guest GPU context lost, shader pipeline compile failures (with an excerpt of the failing Metal shader source), libkrun panics, failed disk creation or first-start setup, VM stopped unexpectedly or killed (with the Mac's memory use), SteamOS not responding."),
@@ -221,7 +221,7 @@ enum CrashReporting {
     }
 
     private static func start() {
-        guard configured, runOverride == nil, !locked({ running }) else { return }
+        guard configured, !dsn.isEmpty, runOverride == nil, !locked({ running }) else { return }
         prepareScrubber()
         try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
         let currentTags = locked { tags }

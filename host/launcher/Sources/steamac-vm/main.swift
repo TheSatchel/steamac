@@ -99,7 +99,7 @@ if let f = Supervisor.windowFrame, !f.isEmpty, !options.headless {
 
 // MARK: VM process (one boot)
 
-let windowTitle = "Satchel Steam Launcher"
+let windowTitle = "FX Steam Launcher" // keep the existing OBS capture target stable
 
 /// Graceful shutdown policy shared by window close, menu, signals and the console escape; window
 /// close / menu Suspend / Dock click / Quit while suspended (SuspendController).

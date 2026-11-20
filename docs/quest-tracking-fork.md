@@ -33,6 +33,13 @@ Verified so far:
 - SteamOS/FEX runtime end-to-end suite: Touch, Index, title-style action reads, standby/reconnect, live-view and half-rate pacing all pass.
 - Host protocol, pose history, queue policy, encrypted loopback, OSC packet encoding, TCP/UDP hand/body reception, stale tracking rejection, audio-decorator forwarding and hand-cache freshness tests pass.
 
-Build artifacts and dependency downloads live under ignored `work/` and `guest/vr/build-*`. The app retains the existing bundle identifier for settings/keychain compatibility, but uses the Satchel display name and this fork's update feed. Guest disks and user accounts are not repository assets.
+Build artifacts and dependency downloads live under ignored `work/` and `guest/vr/build-*`. The app retains the existing bundle identifier for settings/keychain compatibility, and window title for the existing OBS capture target; fork provenance is in Info.plist and updates point to this fork. Guest disks and user accounts are not repository assets.
 
 For the local build without Apple's optional Metal compiler, the unchanged AIR/metallib inputs were recovered from the verified installed base binaries. Their source hashes are recorded in `work/prebuilt-metal/provenance.json`; the C/C++ components themselves are rebuilt from the source pins. A normal Xcode/CI build can generate these inputs using the existing upstream build scripts.
+
+## Local build and integration evidence
+
+- The local app build targets macOS 26 (the tested Mac runs macOS 26.6.2). It uses OpenSSL 3.6.3 statically and the LLVM 15.0.7 bottle, with LLVM's unwind library bundled beside the bridge. No Homebrew path is required by the installed app.
+- The Sentry SDK is the same checksum-pinned 9.30.0 static artifact, declared directly to avoid downloading unused platform variants and source history. No upstream telemetry endpoint is configured.
+- A temporary loopback-only UDP forward was exercised on the active Mac/SteamOS VM: the guest received and echoed the exact probe bytes. The temporary test forward was removed afterwards.
+- Real Quest hand/body calibration and perceived head latency are still pending deployment and headset testing.

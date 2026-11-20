@@ -53,6 +53,8 @@ cp "$HERE/Info.plist" "$PLIST.new"
 
 SWIFT_FLAGS=(
     -c release
+    --manifest-cache none
+    --disable-prefetching
     --package-path "$HERE"
     --scratch-path "$HERE/.build"
     -Xcc "-I$KRUN_PREFIX/include"
@@ -63,6 +65,8 @@ SWIFT_FLAGS=(
     -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$PLIST"
     -Xswiftc -emit-localized-strings -Xswiftc -emit-localized-strings-path -Xswiftc "$HERE/.build/stringsdata"
 )
+
+if [[ -n ${JOBS:-} ]]; then SWIFT_FLAGS+=(--jobs "$JOBS"); fi
 
 "$HERE/fetch-zstd.sh"
 BIN="$(swift build "${SWIFT_FLAGS[@]}" --show-bin-path)/steamac-vm"

@@ -5,9 +5,9 @@
 	<key>CFBundleIdentifier</key>
 	<string>es.fxgam.steamac</string>
 	<key>CFBundleName</key>
-	<string>Satchel Steam Launcher</string>
+	<string>FX Steam Launcher</string>
 	<key>CFBundleDisplayName</key>
-	<string>Satchel Steam Launcher</string>
+	<string>FX Steam Launcher</string>
 	<key>CFBundleExecutable</key>
 	<string>steamac-vm</string>
 	<key>CFBundlePackageType</key>
@@ -27,7 +27,7 @@
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>15.0</string>
+	<string>26.0</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>
