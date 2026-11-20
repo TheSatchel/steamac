@@ -25,7 +25,7 @@ No EAC bypass, game binary modification, fake full-body measurements, changes to
 
 ## Status
 
-Implemented on the task branch; installation and real-headset validation remain pending.
+Built and installed locally from the task branch. The guest loaded the expected new runtime hash. Real-headset acceptance remains pending: Quest was asleep at the end of installation.
 
 Verified so far:
 - Native runtime regression suite: 543 checks, zero failures.
