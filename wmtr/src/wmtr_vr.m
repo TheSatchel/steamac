@@ -66,6 +66,7 @@ struct wmtr_vr {
   struct wmtr_vr_cadence cadence; /* SVR_FRAME ids/times (wmtr_vr_frame_cadence), under `lock` */
   struct vrl_poses poses;
   struct vrl_hand hand[2];
+  struct vrl_body body;
   struct vrl_input input;
   _Atomic uint64_t queries, haptics;
   _Atomic int have_state; /* a VRL_STATE arrived on this link */
@@ -215,7 +216,7 @@ drain_releases(struct wmtr_vr *vr) {
     case VRL_STATE:
       if (n == sizeof u.s) {
         vr->state = u.s;
-        if (!u.s.connected) memset(vr->hand, 0, sizeof vr->hand);
+        if (!u.s.connected) { memset(vr->hand, 0, sizeof vr->hand); memset(&vr->body, 0, sizeof vr->body); }
         atomic_store(&vr->have_state, 1);
       }
       break;
@@ -226,6 +227,9 @@ drain_releases(struct wmtr_vr *vr) {
         const struct vrl_hand *h = (const void *)&u;
         if (h->hand < 2 && h->time >= vr->hand[h->hand].time) vr->hand[h->hand] = *h;
       }
+      break;
+    case VRL_BODY:
+      if(n == sizeof(struct vrl_body)) vr->body = *(const struct vrl_body *)(const void *)&u;
       break;
     case VRL_INPUT: if (n == sizeof u.i) vr->input = u.i; break;
     default: break;
@@ -309,7 +313,7 @@ query_locked(struct wmtr_vr *vr, void *buf, uint32_t size) {
     if (q->size != sizeof(struct svr_hello_req) || size < sizeof(struct svr_hello_rep)) return STATUS_INVALID_PARAMETER;
     struct svr_hello_rep r = {{SVR_HELLO, sizeof r}};
     r.version = SVR_VERSION;
-    r.pad = SVR_CAP_HAND_JOINTS;
+    r.pad = SVR_CAP_HAND_JOINTS | SVR_CAP_BODY_TRACKERS;
     r.connected = connected;
     if (st) {
       r.eye_width = st->eye_width, r.eye_height = st->eye_height, r.refresh_hz = st->refresh_hz, r.profile = st->profile;
@@ -352,6 +356,17 @@ query_locked(struct wmtr_vr *vr, void *buf, uint32_t size) {
     }
     memcpy(buf, &r, sizeof r);
     return STATUS_SUCCESS;
+  }
+  case SVR_BODY: {
+    if(q->size != sizeof(struct svr_body_req) || size < sizeof(struct svr_body_rep)) return STATUS_INVALID_PARAMETER;
+    struct svr_body_rep r = {{SVR_BODY,sizeof r}};r.host_now=now_ns();
+    if(vr) {
+      r.time=vr->body.time;r.received_at=vr->body.received_at;
+      if(connected && r.received_at>0 && r.host_now>=r.received_at && r.host_now-r.received_at<=200000000ll)
+        r.valid_mask=vr->body.valid_mask;
+      memcpy(r.pose,vr->body.pose,sizeof r.pose);
+    }
+    memcpy(buf,&r,sizeof r);return STATUS_SUCCESS;
   }
   case SVR_HAND: {
     if (q->size != sizeof(struct svr_hand_req) || size < sizeof(struct svr_hand_rep)) return STATUS_INVALID_PARAMETER;

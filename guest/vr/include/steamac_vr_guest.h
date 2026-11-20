@@ -23,6 +23,7 @@ enum svr_op {
   SVR_HELLO = 1,  /* svr_hello_req   -> svr_hello_rep */
   SVR_FRAME = 2,  /* svr_frame_req   -> svr_frame_rep: timing + poses + input snapshot */
   SVR_SUBMIT = 3, /* svr_submit_req  -> svr_ack: both eyes of one frame */
+  SVR_BODY = 6,   /* svr_body_req -> svr_body_rep */
   SVR_HAND = 5,   /* svr_hand_req -> svr_hand_rep; additive, old exporters reject it */
   SVR_HAPTIC = 4, /* svr_haptic_req  -> svr_ack */
 };
@@ -94,6 +95,7 @@ struct svr_hello_req {
   char app_key[64]; /* OpenVR app key or executable name, for host logs */
 };
 
+#define SVR_CAP_BODY_TRACKERS 2u
 #define SVR_CAP_HAND_JOINTS 1u /* capabilities carried in the ABI-reserved hello pad */
 
 struct svr_hello_rep {
@@ -182,6 +184,16 @@ struct svr_hand_rep {
   uint32_t hand;
   uint32_t active;
   struct svr_hand_joint joint[SVR_HAND_JOINTS];
+};
+
+
+#define SVR_BODY_TRACKERS 8
+struct svr_body_req { struct svr_hdr h; };
+struct svr_body_rep {
+  struct svr_hdr h;
+  int64_t host_now, time, received_at;
+  uint32_t valid_mask, pad;
+  struct svr_pose pose[SVR_BODY_TRACKERS];
 };
 
 struct svr_haptic_req {

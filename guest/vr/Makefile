@@ -78,3 +78,7 @@ $(OUT)/tracked_hand_test: tests/tracked_hand_test.cpp runtime/skeleton.cpp $(HDR
 
 check-tracking: $(OUT)/tracked_hand_test
 	$(OUT)/tracked_hand_test
+
+$(OUT)/body_tracker_test: tests/body_tracker_test.cpp $(HDRS)
+	mkdir -p $(OUT)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< -ldl

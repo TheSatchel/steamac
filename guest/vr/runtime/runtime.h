@@ -11,10 +11,11 @@
 #include "openvr.h"
 #include "steamac_vr_guest.h"
 #include "transport.h"
+#include "hand_filter.h"
 
 namespace svr {
 // OpenVR tracked device indices this runtime exposes
-enum : vr::TrackedDeviceIndex_t { kHmd = 0, kLeft = 1, kRight = 2, kDeviceCount = 3 };
+enum : vr::TrackedDeviceIndex_t { kHmd = 0, kLeft = 1, kRight = 2, kBodyFirst = 3, kDeviceCount = kBodyFirst + SVR_BODY_TRACKERS };
 
 int64_t now_ns();  // guest CLOCK_MONOTONIC
 
@@ -91,9 +92,14 @@ class Runtime {
   svr_hello_rep hello_{};
   bool hello_view_ = false;  // hello_ carries a connected headset's eye size / FOV / IPD
   void poll_hands();
+  void poll_body();
+  std::mutex body_poll_mutex_;
+  int64_t last_body_poll_ = 0;
+  svr_body_rep body_{};
   std::mutex hand_poll_mutex_;
   int64_t last_hand_poll_ = 0;
   svr_hand_rep hands_[2]{};
+  HandFilter hand_filter_[2];
   svr_frame_rep latest_{};  // newest snapshot
   svr_frame_rep frame_{};   // snapshot of the frame being rendered
   int64_t clock_offset_ = 0;  // guest = host + offset

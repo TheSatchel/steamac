@@ -31,6 +31,14 @@ int main(){
  std::this_thread::sleep_for(std::chrono::milliseconds(210));r=query();CHECK(!r.active);
  hand.time=hand.received_at=now_ns();REQUIRE(server.send(&hand,sizeof hand));std::this_thread::sleep_for(std::chrono::milliseconds(10));CHECK(query().active);
  state.connected=0;REQUIRE(server.send(&state,sizeof state));std::this_thread::sleep_for(std::chrono::milliseconds(10));CHECK(!query().active);
+ state.connected=1;REQUIRE(server.send(&state,sizeof state));
+ vrl_body body{};body.h={VRL_BODY,sizeof body};body.time=body.received_at=now_ns();body.valid_mask=0xc3;
+ for(auto &pose:body.pose){pose.flags=VRL_POSE_VALID|VRL_POSE_TRACKED;pose.orientation[3]=1;pose.position[1]=1.23f;}
+ REQUIRE(server.send(&body,sizeof body));std::this_thread::sleep_for(std::chrono::milliseconds(10));
+ svr_body_rep br{};reinterpret_cast<svr_body_req&>(br)={{SVR_BODY,sizeof(svr_body_req)}};
+ CHECK(wmtr_vr_query(bridge,&br,sizeof br)==0);CHECK(br.valid_mask==0xc3);CHECK(br.pose[0].position[1]==1.23f);
+ std::this_thread::sleep_for(std::chrono::milliseconds(210));
+ reinterpret_cast<svr_body_req&>(br)={{SVR_BODY,sizeof(svr_body_req)}};CHECK(wmtr_vr_query(bridge,&br,sizeof br)==0);CHECK(br.valid_mask==0);
  wmtr_vr_destroy(bridge);
  return test_result("tracking_bridge");
 }

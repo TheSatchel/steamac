@@ -8,7 +8,7 @@ Owner: TheSatchel/steamac. Task branch: codex/quest-tracking-stability.
 - Keep the WiVRn v26.9 wire protocol unchanged. Decode its existing hand and Meta body packets.
 - Forward actual 26-joint hand poses through an additive VRL_HAND / SVR_HAND extension. Existing head/controller pose, timing, and graphics messages retain their ABI. Packets remain below the 2048-byte local datagram limit.
 - Convert tracked joints to the 31-bone OpenVR skeleton, including parent/model spaces. Report Full only for current valid tracked joints; fall back to controller estimation when tracking is absent or stale.
-- Forward only valid body points through VRChat OSC over a loopback-only gvproxy UDP forward. Preserve headset space and publish the head alignment reference. Never manufacture tracked feet from an upper-body packet. Calibration remains a VRChat user action.
+- Forward valid body points through additive VRL_BODY / SVR_BODY messages and expose native OpenVR GenericTracker devices. Preserve the same stage space as head and hands. Never manufacture tracked feet from an upper-body packet. OSC remains an explicit optional path; the launcher does not require it. Calibration remains a VRChat user action.
 - Publish fresh head/controller poses independently of render pacing. Predict the latest pose to the requested frame time once, with bounded extrapolation. Keep graphics submission timestamps unchanged.
 - Expose received packet counts and tracking age. Clear cached hands/body at disconnect; reject non-finite poses and stop publishing stale tracking.
 
@@ -47,3 +47,7 @@ For the local build without Apple's optional Metal compiler, the unchanged AIR/m
 ## Existing guest-agent migration
 
 The Steam VR launch selector is case-sensitive in this installation: use `/VR`. The Rust source now emits that selector. Existing disk images receive a narrow `steam` wrapper only in the progress agent's PATH; it normalizes the VR selector, suppresses a second request while a matching game is running, and debounces startup requests for five seconds. The wrapper is included in repacked layers and can also be installed as a per-user service override without replacing the running guest agent. `scripts/satchel/test-launch-wrapper.py` verifies selector case, duplicate suppression and argument boundaries.
+
+## Native body / hand stability update
+
+The first live trial confirmed improved head latency and real finger motion, but exposed hand jitter and an unavailable VRChat OSC receiver. The next build adds adaptive smoothing only in the hand skeleton's parent-local coordinates, without filtering the HMD/grip poses, and exposes body data as native OpenVR GenericTracker devices. The FEX runtime test discovers the expected four upper-body trackers and no invented feet. Physical calibration and avatar behavior remain to be verified.

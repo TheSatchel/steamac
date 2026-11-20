@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "tracked_hand.h"
+#include "hand_filter.h"
 #include "wmtr_pose.h"
 #ifdef NDEBUG
 #undef NDEBUG
@@ -44,5 +45,14 @@ int main() {
  wmtr_predict_pose(&p,1000000000,1050000000);assert(near(p.position[0],.05f));assert(near(p.orientation[1],std::sin(.025f)));
  wmtr_predict_pose(&p,1050000000,1050000000);assert(near(p.position[0],.05f));
  wmtr_predict_pose(&p,1050000000,2050000000);assert(near(p.position[0],.15f));
+ HandFilter filter;vr::VRBoneTransform_t bones[kHandBoneCount]{};
+ for(auto &bone:bones)bone.orientation.w=1;
+ int64_t t=1000000000;filter.apply(t,bones);
+ float max_noise=0;
+ for(int i=0;i<60;i++){t+=8333333;bones[5].position.v[0]=(i%2 ? -.002f : .002f);filter.apply(t,bones);if(i>10)max_noise=std::max(max_noise,std::abs(bones[5].position.v[0]));}
+ assert(max_noise<.001f);
+ float unchanged=bones[5].position.v[0];bones[5].position.v[0]=99;filter.apply(t,bones);assert(bones[5].position.v[0]==unchanged);
+ for(int i=0;i<8;i++){t+=8333333;bones[5].position.v[0]=.03f;filter.apply(t,bones);}assert(bones[5].position.v[0]>.027f);
+ t+=300000000;bones[5].position.v[0]=.1f;filter.apply(t,bones);assert(bones[5].position.v[0]==.1f);
  std::puts("PASS: tracked joints, both hands, rigid-motion invariance, invalid data, timestamp prediction");
 }

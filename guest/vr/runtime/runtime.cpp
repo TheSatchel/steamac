@@ -75,6 +75,7 @@ vr::EVRInitError Runtime::init(vr::EVRApplicationType type) {
 
 void Runtime::shutdown() {
   std::lock_guard<std::mutex> serial(hand_poll_mutex_);
+  std::lock_guard<std::mutex> body_serial(body_poll_mutex_);
   std::lock_guard<std::mutex> g(m_);
   if (pending_valid_) flush_submit_locked();
   transport_.reset();
@@ -126,7 +127,7 @@ bool Runtime::fetch(svr_frame_rep *out) {
       SVR_INFO("headset view: %s %ux%u per eye %.0f Hz", hr.name, hr.eye_width, hr.eye_height, hr.refresh_hz);
     }
   }
-  std::lock_guard<std::mutex> g(m_);
+  std::unique_lock<std::mutex> g(m_);
   clock_offset_ = now - rep.host_now;
   latest_ = rep;
   hello_.connected = rep.connected;
@@ -135,7 +136,7 @@ bool Runtime::fetch(svr_frame_rep *out) {
   bool conn[kDeviceCount] = {true,
                              rep.connected && (rep.pose[SVR_DEV_LEFT_GRIP].flags & SVR_POSE_VALID),
                              rep.connected && (rep.pose[SVR_DEV_RIGHT_GRIP].flags & SVR_POSE_VALID)};
-  for (uint32_t i = 0; i < kDeviceCount; i++) {
+  for (uint32_t i = 0; i < kBodyFirst; i++) {
     if (conn[i] != connected_[i]) {
       connected_[i] = conn[i];
       vr::VREvent_t ev{};
@@ -145,7 +146,33 @@ bool Runtime::fetch(svr_frame_rep *out) {
     }
   }
   if (out) *out = rep;
+  g.unlock();
+  poll_body();
   return true;
+}
+
+void Runtime::poll_body() {
+  std::lock_guard<std::mutex> serial(body_poll_mutex_);
+  int64_t now=now_ns();if(now-last_body_poll_<4000000) return;last_body_poll_=now;
+  bool supported;
+  { std::lock_guard<std::mutex> lock(m_);supported=hello_.pad & SVR_CAP_BODY_TRACKERS; }
+  svr_body_rep rep{};
+  if(supported && transport_) {
+    svr_body_req req{{SVR_BODY,sizeof(req)}};
+    if(transport_->call(&req.h,&rep.h,sizeof rep) || rep.h.op!=SVR_BODY || rep.h.size!=sizeof rep)
+      rep.valid_mask=0;
+  }
+  if(!rep.received_at || rep.host_now<rep.received_at || rep.host_now-rep.received_at>200000000)
+    rep.valid_mask=0;
+  std::lock_guard<std::mutex> lock(m_);body_=rep;
+  for(uint32_t i=0;i<SVR_BODY_TRACKERS;i++) {
+    bool active=(rep.valid_mask & (1u<<i)) && (rep.pose[i].flags&SVR_POSE_VALID);
+    if(active != connected_[kBodyFirst+i]) {
+      connected_[kBodyFirst+i]=active;vr::VREvent_t event{};
+      event.eventType=active ? vr::VREvent_TrackedDeviceActivated : vr::VREvent_TrackedDeviceDeactivated;
+      event.trackedDeviceIndex=kBodyFirst+i;events_.push_back(event);
+    }
+  }
 }
 
 void Runtime::poll_hands() {
@@ -172,12 +199,13 @@ bool Runtime::tracked_hand(int hand, vr::VRBoneTransform_t *out) {
   poll_hands();
   std::lock_guard<std::mutex> lock(m_);
   const auto &h=hands_[hand];
-  if (!h.active) return false;
+  if (!h.active) { hand_filter_[hand].reset(); return false; }
   vr::VRBoneTransform_t bones[kHandBoneCount];
   int d=hand ? SVR_DEV_RIGHT_GRIP : SVR_DEV_LEFT_GRIP;
   float dt=std::clamp(float(h.time-latest_.pose_time)*1e-9f,-0.1f,0.1f);
   svr_pose grip=extrapolate(latest_.pose[d],dt);
-  if (!tracked_hand_bones(h,grip,bones)) return false;
+  if (!tracked_hand_bones(h,grip,bones)) { hand_filter_[hand].reset(); return false; }
+  hand_filter_[hand].apply(h.time,bones);
   if(out) std::copy(bones,bones+kHandBoneCount,out);
   return true;
 }
@@ -291,12 +319,18 @@ bool Runtime::device_connected(vr::TrackedDeviceIndex_t i) const {
 }
 
 vr::TrackedDevicePose_t Runtime::device_pose(vr::TrackedDeviceIndex_t i, float seconds_from_now) const {
+  if(i>=kBodyFirst && i<kDeviceCount) {
+    std::lock_guard<std::mutex> lock(m_);return to_openvr(body_.pose[i-kBodyFirst],connected_[i]);
+  }
   int d = device_to_svr(i);
   if (d < 0) return to_openvr(svr_pose{}, false);
   return to_openvr(pose_at(d, now_ns() + (int64_t)(seconds_from_now * 1e9f)), device_connected(i));
 }
 
 vr::TrackedDevicePose_t Runtime::device_frame_pose(vr::TrackedDeviceIndex_t i) const {
+  if(i>=kBodyFirst && i<kDeviceCount) {
+    std::lock_guard<std::mutex> lock(m_);return to_openvr(body_.pose[i-kBodyFirst],connected_[i]);
+  }
   int d = device_to_svr(i);
   if (d < 0) return to_openvr(svr_pose{}, false);
   return to_openvr(frame_pose(d), device_connected(i));

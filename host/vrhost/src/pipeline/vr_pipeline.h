@@ -51,7 +51,7 @@ private:
 struct PipelineStats
 {
 	std::atomic<uint64_t> received{0}, submitted{0}, no_headset{0};
-	std::atomic<uint64_t> poses_forwarded{0}, hands_forwarded{0}, body_osc_packets{0}, pose_send_failures{0};
+	std::atomic<uint64_t> poses_forwarded{0}, hands_forwarded{0}, body_osc_packets{0}, body_trackers_forwarded{0}, pose_send_failures{0};
 	std::atomic<int64_t> last_compose_gpu_ns{0}, last_latency_ns{0}; // app submit -> encoded + sent
 };
 

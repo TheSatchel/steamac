@@ -32,6 +32,7 @@ enum vrl_type {
   VRL_POSES = 6,     /* host -> vm: struct vrl_poses, once per frame and on new tracking data */
   VRL_INPUT = 7,     /* host -> vm: struct vrl_input, on change */
   VRL_HAPTICS = 8,   /* vm -> host: struct vrl_haptics */
+  VRL_BODY = 11,     /* host -> vm: native body tracker poses */
   VRL_HAND = 10,     /* host -> vm: tracked OpenXR hand joints, one hand per datagram */
   VRL_STATE = 9,     /* host -> vm: struct vrl_state, on connect/disconnect/refresh-rate change */
 };
@@ -162,6 +163,15 @@ struct vrl_hand {
   uint32_t hand;        /* 0 left, 1 right */
   uint32_t active;
   struct vrl_hand_joint joint[VRL_HAND_JOINTS];
+};
+
+
+#define VRL_BODY_TRACKERS 8
+struct vrl_body {
+  struct vrl_header h;
+  int64_t time, received_at;
+  uint32_t valid_mask, pad;
+  struct vrl_pose pose[VRL_BODY_TRACKERS];
 };
 
 struct vrl_haptics {

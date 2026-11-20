@@ -230,7 +230,21 @@ void VrPipeline::on_hand(const HandTracking &hand)
 	if(server->send(&h, sizeof h)) st.hands_forwarded++;
 }
 
-void VrPipeline::on_body(const BodyTracking &body) { if(body_osc.send(body)) st.body_osc_packets++; }
+void VrPipeline::on_body(const BodyTracking &body) {
+  vrl_body b{};b.h={VRL_BODY,sizeof b};b.time=body.time;b.received_at=body.received_at;
+  if(body.confidence>0 && std::isfinite(body.confidence)) for(const auto &j:body.joint) {
+    if(j.tracker<1 || j.tracker>VRL_BODY_TRACKERS || !(j.flags&1)) continue;
+    bool valid=true;float norm=0;
+    for(float v:j.pose.orientation) { valid &= std::isfinite(v);norm+=v*v; }
+    for(float v:j.pose.position) valid &= std::isfinite(v);
+    if(!valid || norm<.25f || norm>2.25f) continue;
+    auto &p=b.pose[j.tracker-1];std::copy(j.pose.orientation.begin(),j.pose.orientation.end(),p.orientation);
+    std::copy(j.pose.position.begin(),j.pose.position.end(),p.position);
+    p.flags=VRL_POSE_VALID|VRL_POSE_TRACKED;b.valid_mask|=1u<<(j.tracker-1);
+  }
+  if(server->send(&b,sizeof b)) st.body_trackers_forwarded++;
+  if(body_osc.send(body)) st.body_osc_packets++;
+}
 
 void VrPipeline::on_input(std::span<const InputValue> values)
 {

@@ -130,6 +130,7 @@ class System : public StubIVRSystem {
                                                                      : TrackedControllerRole_Invalid;
   }
   ETrackedDeviceClass GetTrackedDeviceClass(vr::TrackedDeviceIndex_t i) override {
+    if(i>=kBodyFirst && i<kDeviceCount && Runtime::get().device_connected(i)) return TrackedDeviceClass_GenericTracker;
     return i == kHmd ? TrackedDeviceClass_HMD : (i == kLeft || i == kRight) ? TrackedDeviceClass_Controller
                                                                             : TrackedDeviceClass_Invalid;
   }
@@ -149,7 +150,7 @@ class System : public StubIVRSystem {
       case Prop_DeviceIsWireless_Bool: return prop_result(e, TrackedProp_Success, true);
       case Prop_DeviceIsCharging_Bool: return prop_result(e, TrackedProp_Success, false);
       case Prop_HasDisplayComponent_Bool: return prop_result(e, TrackedProp_Success, i == kHmd);
-      case Prop_HasControllerComponent_Bool: return prop_result(e, TrackedProp_Success, i != kHmd);
+      case Prop_HasControllerComponent_Bool: return prop_result(e, TrackedProp_Success, i == kLeft || i == kRight);
       case Prop_ContainsProximitySensor_Bool: return prop_result(e, TrackedProp_Success, i == kHmd);
       default: return prop_result(e, TrackedProp_UnknownProperty, false);
     }
@@ -229,6 +230,18 @@ class System : public StubIVRSystem {
   uint32_t GetStringTrackedDeviceProperty(vr::TrackedDeviceIndex_t i, ETrackedDeviceProperty p, char *buf,
                                           uint32_t size, ETrackedPropertyError *e) override {
     if (i >= kDeviceCount) return prop_result(e, TrackedProp_InvalidDevice, 0u);
+    if(i>=kBodyFirst) {
+      switch(p) {
+        case Prop_TrackingSystemName_String: return copy_string("satchel",buf,size,e);
+        case Prop_ModelNumber_String: return copy_string("Satchel Body Tracker",buf,size,e);
+        case Prop_ManufacturerName_String: return copy_string("Satchel",buf,size,e);
+        case Prop_SerialNumber_String: return copy_string("satchel-body-"+std::to_string(i-kBodyFirst+1),buf,size,e);
+        case Prop_RegisteredDeviceType_String: return copy_string("satchel/body/"+std::to_string(i-kBodyFirst+1),buf,size,e);
+        case Prop_ControllerType_String: return copy_string("vive_tracker",buf,size,e);
+        case Prop_RenderModelName_String: return copy_string("vr_tracker_vive_1_0",buf,size,e);
+        default: return prop_result(e,TrackedProp_UnknownProperty,0u);
+      }
+    }
     if (i == kHmd) {
       svr_hello_rep hi = Runtime::get().hello();
       // The headset presents itself as SteamVR presents that family's HMD (OpenComposite XrHMD/XrTrackedDevice, values

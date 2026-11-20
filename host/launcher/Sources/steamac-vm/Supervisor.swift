@@ -167,10 +167,6 @@ enum Supervisor {
                     cleanup()
                     exit(1)
                 }
-                if o.vr && o.vrGameAppID == 438100 && !o.vrVirtualDesktop {
-                    do { try g.forward(protocol: "udp", local: "127.0.0.1:19000", remote: "192.168.127.2:9000") }
-                    catch { log("VRChat body OSC forward failed: \(error)") }
-                }
                 if o.lanRemotePlay {
                     let relay = RemotePlayRelay(proxy: g)
                     do {

@@ -30,7 +30,7 @@ class Compositor : public StubIVRCompositor {
       int64_t t = rt.frame_display_guest() + (int64_t)(1e9f / rt.refresh_hz());
       for (uint32_t i = 0; i < ngame; i++) {
         int d = i == kHmd ? SVR_DEV_HEAD : i == kLeft ? SVR_DEV_LEFT_GRIP : i == kRight ? SVR_DEV_RIGHT_GRIP : -1;
-        game[i] = d < 0 ? to_openvr(svr_pose{}, false) : to_openvr(rt.pose_at(d, t), rt.device_connected(i));
+        game[i] = i>=kBodyFirst && i<kDeviceCount ? rt.device_pose(i,0) : d < 0 ? to_openvr(svr_pose{}, false) : to_openvr(rt.pose_at(d, t), rt.device_connected(i));
       }
     }
     return VRCompositorError_None;
