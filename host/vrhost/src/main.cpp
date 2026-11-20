@@ -577,6 +577,7 @@ static int serve_link(Adapter & adapter, int link_fd, const std::string & mach_n
 		       + ",\"hands_forwarded\":" + std::to_string(ps.hands_forwarded.load())
 		       + ",\"body_osc_packets\":" + std::to_string(ps.body_osc_packets.load())
 		       + ",\"body_trackers_forwarded\":" + std::to_string(ps.body_trackers_forwarded.load())
+		       + ",\"body_valid_mask\":" + std::to_string(ps.body_valid_mask.load())
 		       + ",\"pose_send_failures\":" + std::to_string(ps.pose_send_failures.load());
 	}, [&pipeline](uint32_t n) {
 		pipeline.set_frames_in_flight(n);

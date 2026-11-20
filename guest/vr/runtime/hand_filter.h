@@ -20,8 +20,7 @@ class HandFilter {
       auto &old=bones_[i];auto &next=bones[i];
       float dx=next.position.v[0]-old.position.v[0],dy=next.position.v[1]-old.position.v[1],dz=next.position.v[2]-old.position.v[2];
       float speed=std::sqrt(dx*dx+dy*dy+dz*dz)/dt;
-      float position_alpha=1-std::exp(-6.2831853f*(i==1 ? 8.f : 12.f)*dt);
-      position_alpha=std::max(position_alpha,1-std::exp(-6.2831853f*(12.f+speed*12.f)*dt));
+      float position_alpha=1-std::exp(-6.2831853f*((i==1 ? 8.f : 12.f)+speed*12.f)*dt);
       for(int k=0;k<3;k++) old.position.v[k]+=position_alpha*(next.position.v[k]-old.position.v[k]);
       Quat a=qnorm({old.orientation.x,old.orientation.y,old.orientation.z,old.orientation.w});
       Quat b=qnorm({next.orientation.x,next.orientation.y,next.orientation.z,next.orientation.w});

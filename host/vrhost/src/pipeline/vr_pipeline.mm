@@ -172,6 +172,7 @@ void VrPipeline::on_connected(const HeadsetInfo & h)
 
 void VrPipeline::on_disconnected()
 {
+	st.body_valid_mask=0;
 	{
 		std::lock_guard l(input_mutex);
 		memset(input, 0, sizeof input);
@@ -242,6 +243,7 @@ void VrPipeline::on_body(const BodyTracking &body) {
     std::copy(j.pose.position.begin(),j.pose.position.end(),p.position);
     p.flags=VRL_POSE_VALID|VRL_POSE_TRACKED;b.valid_mask|=1u<<(j.tracker-1);
   }
+  st.body_valid_mask=b.valid_mask;
   if(server->send(&b,sizeof b)) st.body_trackers_forwarded++;
   if(body_osc.send(body)) st.body_osc_packets++;
 }
