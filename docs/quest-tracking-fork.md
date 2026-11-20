@@ -79,3 +79,24 @@ The next physical trial still reported large hand jumps and no independent foot 
 - Quest body packets can contain **Generative Legs**, which estimate legs from upper-body signals. Valid foot transforms are not proof of independently measured foot movement. Forwarding those packets cannot guarantee reproducing a foot lift or kick while the upper body stays still. See [Meta's explanation](https://developers.meta.com/vr/blog/inside-out-body-tracking-and-generative-legs/) and the [current Movement SDK limitations](https://developers.meta.com/vr/documentation/unreal/unreal-movement-overview/).
 
 Acceptance for hand recovery is synthetic loss/reappearance tests followed by the user's in-headset test. Independent foot tracking requires another source of foot observations; it is not certified by this fork.
+
+### Local USB tunnel maintenance
+
+`scripts/satchel/quest-usb-link.py` installs an optional, explicit user LaunchAgent named `com.thesatchel.quest-usb-link`. It checks every five seconds, gated by the VR host control socket. With no running VR host, it does not call ADB. For exactly one authorized Quest 3 it verifies/recreates `adb reverse tcp:9757 tcp:9757` using the native ADB backend. It does not reset the ADB server or modify other device forwards.
+
+While the host reports an established connection, the helper never restarts the headset app. When the host is waiting and the headset is awake, it starts the WiVRn localhost URI with `am start -W`. A stuck client is retried with a 15/30/60-second backoff. Sleep, unavailable USB, multiple headsets and missing authorization are explicit waiting states. A new VR host generation resets the retry deadline. Physical disconnection, headset power-off or revoked authorization still require the corresponding user action.
+
+Install with the known platform-tools path:
+
+```sh
+python3 scripts/satchel/quest-usb-link.py --install --adb /absolute/path/to/platform-tools/adb
+```
+
+The installed script, local status and event log live in `~/Library/Application Support/steamac/quest-usb-link/`. The LaunchAgent plist lives in `~/Library/LaunchAgents/com.thesatchel.quest-usb-link.plist`. To inspect or stop it:
+
+```sh
+python3 "$HOME/Library/Application Support/steamac/quest-usb-link/quest-usb-link.py" --status
+python3 "$HOME/Library/Application Support/steamac/quest-usb-link/quest-usb-link.py" --uninstall
+```
+
+`test-quest-usb-link.py` exercises eleven lifecycle, missing-tunnel, non-interruption, wake, retry and authorization cases without disrupting a live headset.
