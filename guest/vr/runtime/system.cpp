@@ -130,7 +130,7 @@ class System : public StubIVRSystem {
                                                                      : TrackedControllerRole_Invalid;
   }
   ETrackedDeviceClass GetTrackedDeviceClass(vr::TrackedDeviceIndex_t i) override {
-    if(i>=kBodyFirst && i<kDeviceCount && Runtime::get().device_connected(i)) return TrackedDeviceClass_GenericTracker;
+    if(i>=kBodyFirst && i<kDeviceCount) return TrackedDeviceClass_GenericTracker;
     return i == kHmd ? TrackedDeviceClass_HMD : (i == kLeft || i == kRight) ? TrackedDeviceClass_Controller
                                                                             : TrackedDeviceClass_Invalid;
   }

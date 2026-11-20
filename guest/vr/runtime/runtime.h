@@ -96,6 +96,9 @@ class Runtime {
   std::mutex body_poll_mutex_;
   int64_t last_body_poll_ = 0;
   svr_body_rep body_{};
+  uint32_t body_seen_mask_ = 0;
+  mutable std::atomic<uint32_t> body_reads_{0};
+  float body_min_[3] = {1e9f,1e9f,1e9f}, body_max_[3] = {-1e9f,-1e9f,-1e9f};
   std::mutex hand_poll_mutex_;
   int64_t last_hand_poll_ = 0;
   svr_hand_rep hands_[2]{};

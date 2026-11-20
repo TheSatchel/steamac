@@ -46,6 +46,7 @@ SessionControl::Counters WivrnControl::counters() const
 	        .tracking_packets = st.tracking.load(), .hand_packets = st.hand_packets.load(), .body_packets = st.body_packets.load(),
 	        .tracking_received_ns = st.last_tracking_received_ns.load(), .tracking_source_ns = st.last_tracking_source_ns.load(),
 	        .head_received_ns = st.last_head_received_ns.load(), .tracking_refreshes = st.tracking_refreshes.load(),
+	        .body_restarts = st.body_restarts.load(),
 	        .last_encode_ns = st.last_encode_ns.load(),
 	        .last_decode_ns = st.last_feedback_decode_ns.load(),
 	};

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "check.h"
 #include "session/pose_history.h"
+#include "session/body_recovery.h"
 #include <cmath>
 
 using namespace vrhost;
@@ -44,6 +45,44 @@ int main()
 	// bounded at max_extrapolation (100 ms)
 	auto far = e.at(1'000'000'000);
 	CHECK(near(far->pose.position[0], 0.1f));
+	CHECK(!far->orientation_valid);
+	CHECK((far->linear_velocity == std::array<float, 3>{}));
+	CHECK((far->angular_velocity == std::array<float, 3>{}));
+
+	// A new loss overrides an older prediction even when the prediction targets a later time.
+	PoseHistory lost;
+	lost.add({.device=Device::left_grip, .time=140'000'000, .pose=yaw(0,1),
+	          .linear_velocity={1,0,0}, .orientation_valid=true, .position_valid=true, .source_time=100'000'000});
+	lost.add({.device=Device::left_grip, .time=110'000'000, .pose=yaw(0,1),
+	          .orientation_valid=false, .position_valid=false, .source_time=110'000'000});
+	CHECK(!lost.at(150'000'000)->orientation_valid);
+	CHECK(near(lost.at(150'000'000)->pose.position[0],1));
+	lost.add({.device=Device::left_grip, .time=150'000'000, .pose=yaw(0,9),
+	          .orientation_valid=true, .position_valid=true, .source_time=100'000'000});
+	CHECK(!lost.at(160'000'000)->orientation_valid); // reordered old packet cannot resurrect the hand
+	lost.add({.device=Device::left_grip, .time=170'000'000, .pose=yaw(0,2),
+	          .orientation_valid=true, .position_valid=true, .source_time=160'000'000});
+	CHECK(lost.at(170'000'000)->position_valid);
+	CHECK(near(lost.at(170'000'000)->pose.position[0],2)); // reacquire without sweeping through stale positions
+	CHECK(!lost.at(400'000'000)->position_valid);
+
+	// Removing the headset must not trigger retries. Live-head/invalid-body recreates only BODY.
+	BodyRecovery recovery;
+	using Action = BodyRecovery::Action;
+	for (int i=1;i<=100;++i) CHECK(recovery.update(i*1'000'000'000LL,false,false)==Action::none);
+	CHECK(recovery.update(101'000'000'000LL,true,false)==Action::none);
+	CHECK(recovery.update(103'000'000'000LL,true,false)==Action::suspend);
+	CHECK(recovery.update(103'400'000'000LL,true,false)==Action::none);
+	CHECK(recovery.update(103'500'000'000LL,true,false)==Action::resume);
+	CHECK(recovery.update(110'000'000'000LL,true,false)==Action::none);
+	CHECK(recovery.update(113'000'000'000LL,true,false)==Action::suspend);
+	CHECK(recovery.update(114'000'000'000LL,true,false)==Action::resume);
+	CHECK(recovery.update(123'000'000'000LL,true,false)==Action::suspend);
+	CHECK(recovery.update(124'000'000'000LL,true,false)==Action::resume);
+	CHECK(recovery.update(140'000'000'000LL,true,false)==Action::none); // bounded retry budget
+	CHECK(recovery.update(141'000'000'000LL,true,true)==Action::none);
+	CHECK(recovery.update(142'000'000'000LL,true,false)==Action::none);
+	CHECK(recovery.update(145'000'000'000LL,true,false)==Action::suspend); // valid data rearms recovery
 
 	// multiply: head yawed 90 degrees, eye offset +X in head space -> world -Z
 	Pose head = yaw(float(M_PI / 2));

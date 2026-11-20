@@ -8,6 +8,7 @@
 
 #include "encoder/vt_encoder.h"
 #include "session/clock.h"
+#include "session/body_recovery.h"
 #include "wivrn/dnssd_publisher.h"
 #include "wivrn/known_keys.h"
 
@@ -291,6 +292,8 @@ struct WivrnSession::impl
 
 	ClockOffset clock;
 	th::tracking_control tracking_request;
+	BodyRecovery body_recovery;
+	ns last_body_valid = 0;
 	std::array<PoseHistory, size_t(Device::count)> history;
 	std::mutex view_mutex;
 	std::array<Pose, 2> view_pose{};  // eye relative to head
@@ -850,14 +853,27 @@ void WivrnSession::impl::handle(fh::packets && packet)
 				                .angular_velocity = {dp.angular_velocity.x, dp.angular_velocity.y, dp.angular_velocity.z},
 				                .orientation_valid = bool(dp.flags & wivrn::from_headset::orientation_valid),
 				                .position_valid = bool(dp.flags & wivrn::from_headset::position_valid),
+				                .source_time = clock.from_headset(pkt.production_timestamp),
 				        };
 				        bool finite=true;
 				        for(float v:tp.pose.orientation) finite &= std::isfinite(v);
 				        for(float v:tp.pose.position) finite &= std::isfinite(v);
-				        if (tp.orientation_valid && finite) {
-					        history[size_t(d)].add(tp);
-					        if(d==Device::head) stats.last_head_received_ns=now_ns();
-				        }
+				        if (!finite) { tp.pose = {}; tp.orientation_valid = tp.position_valid = false; }
+				        const int hand = d == Device::left_grip || d == Device::left_aim ? 0 :
+				                         d == Device::right_grip || d == Device::right_aim ? 1 : -1;
+				        // OpenXR may keep a valid, inferred hand pose after camera tracking is lost.
+				        // Do not present that extrapolated wrist as a live controller to the game.
+				        if (hand >= 0 && pkt.interaction_profiles[hand] == wivrn::interaction_profile::ext_hand_interaction_ext &&
+				            !(dp.flags & fh::position_tracked))
+					        tp.orientation_valid = tp.position_valid = false;
+				        if (!(dp.flags & fh::linear_velocity_valid) || !tp.position_valid)
+					        tp.linear_velocity = {};
+				        if (!(dp.flags & fh::angular_velocity_valid) || !tp.orientation_valid)
+					        tp.angular_velocity = {};
+				        for (float &v : tp.linear_velocity) if (!std::isfinite(v)) v = 0;
+				        for (float &v : tp.angular_velocity) if (!std::isfinite(v)) v = 0;
+				        history[size_t(d)].add(tp); // loss is a sample too, not permission to reuse the last valid pose
+				        if (d == Device::head && tp.orientation_valid) stats.last_head_received_ns = now_ns();
 				        poses.push_back(tp);
 			        }
 			        {
@@ -896,6 +912,8 @@ void WivrnSession::impl::handle(fh::packets && packet)
 				        if (valid && (j.flags & fh::orientation_tracked) && (j.flags & fh::position_tracked)) out.flags |= 2u;
 				        hand.active &= valid;
 			        }
+			        if (pkt.joints && !((*pkt.joints)[XR_HAND_JOINT_WRIST_EXT].flags & fh::position_tracked))
+				        hand.active = false;
 			        if (listener) listener->on_hand(hand);
 		        }
 		        else if constexpr (std::is_same_v<T, fh::meta_body>)
@@ -930,6 +948,8 @@ void WivrnSession::impl::handle(fh::packets && packet)
 					        }
 				        }
 			        },pkt.joints);
+			        if (std::isfinite(body.confidence) && body.confidence > 0 && !body.joint.empty())
+				        last_body_valid = now_ns();
 			        if(listener) listener->on_body(body);
 		        }
 		        else if constexpr (std::is_same_v<T, fh::feedback>)
@@ -1053,9 +1073,25 @@ void WivrnSession::impl::run_connection(wivrn::TCP && tcp)
 	auto next_sync = std::chrono::steady_clock::now();
 	auto next_tracking_refresh = next_sync + std::chrono::seconds(2);
 	stats.last_head_received_ns=0;
+	body_recovery = {};
+	last_body_valid = 0;
 	while (not quit)
 	{
 		auto now = std::chrono::steady_clock::now();
+		if (hi.body_tracking != fh::body_type::none) {
+			const ns at = now_ns(), head_at = stats.last_head_received_ns.load();
+			auto action = body_recovery.update(at, head_at && at-head_at < 250'000'000,
+			                                   last_body_valid && at-last_body_valid < 250'000'000);
+			if (action == BodyRecovery::Action::suspend) {
+				auto request = tracking_request;
+				std::erase_if(request.pattern, [](const auto &sample) { return sample.device == wivrn::device_id::BODY; });
+				control->send(std::move(request));
+				stats.body_restarts++;
+				log("body tracking invalid while head tracking is live; recreating headset body tracker");
+			} else if (action == BodyRecovery::Action::resume) {
+				control->send(th::tracking_control{tracking_request});
+			}
+		}
 		if(now >= next_tracking_refresh) {
 			next_tracking_refresh=now+std::chrono::seconds(2);
 			auto head_at=stats.last_head_received_ns.load();

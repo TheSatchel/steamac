@@ -265,6 +265,7 @@ std::string ControlServer::status()
 	       + ",\"receive_age_ms\":" + (c.tracking_received_ns ? std::to_string(std::max<int64_t>(0, now-c.tracking_received_ns)/1000000) : "null")
 	       + ",\"head_age_ms\":" + (c.head_received_ns ? std::to_string(std::max<int64_t>(0, now-c.head_received_ns)/1000000) : "null")
 	       + ",\"refresh_requests\":" + std::to_string(c.tracking_refreshes)
+	       + ",\"body_restarts\":" + std::to_string(c.body_restarts)
 	       + ",\"source_age_ms\":" + (c.tracking_source_ns ? std::to_string((now-c.tracking_source_ns)/1000000) : "null") + "}";
 	double pipeline = hooks.pipeline_latency_ms ? hooks.pipeline_latency_ms() : 0;
 	snprintf(num, sizeof num,

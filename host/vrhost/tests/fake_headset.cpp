@@ -323,6 +323,7 @@ FakeHeadsetResult run_fake_headset(const FakeHeadsetOptions & o)
 			}
 		};
 
+		bool body_enabled = true, body_recovered = false;
 		while (res.decoded[0] < o.frames or res.decoded[1] < o.frames)
 		{
 			send_mic();
@@ -334,6 +335,7 @@ FakeHeadsetResult run_fake_headset(const FakeHeadsetOptions & o)
 				fh::tracking tr{};
 				tr.production_timestamp = hs_now() - (o.stale_tracking ? 500000000 : 0);
 				tr.timestamp = hs_now();
+				if (o.untracked_hands) tr.interaction_profiles[0] = tr.interaction_profiles[1] = wivrn::interaction_profile::ext_hand_interaction_ext;
 				tr.view_flags = XR_VIEW_STATE_ORIENTATION_VALID_BIT | XR_VIEW_STATE_POSITION_VALID_BIT;
 				for (int i = 0; i < 2; ++i)
 					tr.views[i] = {.pose = {.orientation = {0, 0, 0, 1}, .position = {i ? 0.032f : -0.032f, 0, 0}},
@@ -364,6 +366,8 @@ FakeHeadsetResult run_fake_headset(const FakeHeadsetOptions & o)
 						                                    wivrn::from_headset::orientation_tracked |
 						                                    wivrn::from_headset::position_tracked});
 				}
+				if (o.untracked_hands) for (auto &p:tr.device_poses)
+					if (p.device != wivrn::device_id::HEAD) p.flags &= ~fh::position_tracked;
 				if (stream)
 					stream->send(std::move(tr));
 				else
@@ -376,6 +380,7 @@ FakeHeadsetResult run_fake_headset(const FakeHeadsetOptions & o)
 							auto &j=(*h.joints)[i];j.position={float(i)*.01f,1.f,float(hand)};
 							j.orientation=packed_quaternion::from_quaternion({0,0,0,1});
 							j.radius=100;j.flags=fh::orientation_valid|fh::position_valid|fh::orientation_tracked|fh::position_tracked;
+							if (o.untracked_hands) j.flags &= ~fh::position_tracked;
 						}
 						if(stream) stream->send(std::move(h));else control.send(std::move(h));
 					}
@@ -383,7 +388,8 @@ FakeHeadsetResult run_fake_headset(const FakeHeadsetOptions & o)
 					fh::meta_body::meta_joints js{};js.root.position={1,2,3};
 					js.root.orientation=packed_quaternion::from_quaternion({0,0,0,1});js.root.flags=fh::orientation_valid|fh::position_valid;
 					for(auto &j:js.joints){j.position={100,200,300};j.orientation=js.root.orientation;j.flags=js.root.flags;}
-					b.joints=js;if(stream)stream->send(std::move(b));else control.send(std::move(b));
+					if (o.body_stuck_until_restart && !body_recovered) b.confidence=0;
+					b.joints=js;if(body_enabled) { if(stream)stream->send(std::move(b));else control.send(std::move(b)); }
 				}
 				if (o.controllers and ++input_tick % 4 == 0)
 				{
@@ -470,7 +476,11 @@ FakeHeadsetResult run_fake_headset(const FakeHeadsetOptions & o)
 				res.got_tracking_control=!pattern.empty();
 				res.requested_hands=std::ranges::any_of(pattern,[](auto &p){return p.device==wivrn::device_id::LEFT_HAND;})
 				                    && std::ranges::any_of(pattern,[](auto &p){return p.device==wivrn::device_id::RIGHT_HAND;});
-				res.requested_body=std::ranges::any_of(pattern,[](auto &p){return p.device==wivrn::device_id::BODY;});
+				bool requested_body=std::ranges::any_of(pattern,[](auto &p){return p.device==wivrn::device_id::BODY;});
+				if (res.requested_body && body_enabled && !requested_body) ++res.body_suspensions;
+				if (!body_enabled && requested_body) { ++res.body_restarts;body_recovered=true; }
+				body_enabled=requested_body;
+				res.requested_body |= requested_body;
 			}
 			else if (auto * s = std::get_if<th::video_stream_data_shard>(&pkt))
 			{

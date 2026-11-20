@@ -79,6 +79,7 @@ void Runtime::shutdown() {
   std::lock_guard<std::mutex> g(m_);
   if (pending_valid_) flush_submit_locked();
   transport_.reset();
+  body_seen_mask_ = 0;
   events_.clear();
   memset(connected_, 0, sizeof(connected_));
 }
@@ -164,9 +165,20 @@ void Runtime::poll_body() {
   }
   if(!rep.received_at || rep.host_now<rep.received_at || rep.host_now-rep.received_at>200000000)
     rep.valid_mask=0;
-  std::lock_guard<std::mutex> lock(m_);body_=rep;
+  std::lock_guard<std::mutex> lock(m_);
+  if (!hello_.connected) body_seen_mask_ = 0;
+  else body_seen_mask_ |= rep.valid_mask;
+  for(uint32_t i=0;i<SVR_BODY_TRACKERS;i++)
+    if (!(rep.valid_mask & (1u<<i))) rep.pose[i].flags=0;
+  body_=rep;
+  if (rep.valid_mask & 1u) for(int i=0;i<3;i++) {
+    body_min_[i]=std::min(body_min_[i],rep.pose[0].position[i]);
+    body_max_[i]=std::max(body_max_[i],rep.pose[0].position[i]);
+  }
   for(uint32_t i=0;i<SVR_BODY_TRACKERS;i++) {
-    bool active=(rep.valid_mask & (1u<<i)) && (rep.pose[i].flags&SVR_POSE_VALID);
+    // Tracking loss is not USB/device removal: preserve identity and calibration
+    // until the headset disconnects, while returning an invalid pose below.
+    bool active=hello_.connected && (body_seen_mask_ & (1u<<i));
     if(active != connected_[kBodyFirst+i]) {
       connected_[kBodyFirst+i]=active;vr::VREvent_t event{};
       event.eventType=active ? vr::VREvent_TrackedDeviceActivated : vr::VREvent_TrackedDeviceDeactivated;
@@ -285,6 +297,12 @@ void Runtime::note_render_head(const vr::TrackedDevicePose_t &p) {
            s.connected_query.exchange(0), s.connected_false_hmd.exchange(0), stats_head_invalid_, stats_head_min_[0],
            stats_head_max_[0], stats_head_min_[1], stats_head_max_[1], stats_head_min_[2], stats_head_max_[2]);
   stats_head_invalid_ = 0;
+  SVR_INFO("body 5s: mask=%02x reads=%u age_ms=%.1f hips range x=%.3f..%.3f y=%.3f..%.3f z=%.3f..%.3f feet_y=%.3f,%.3f",
+           body_.valid_mask,body_reads_.exchange(0),
+           body_.received_at ? (body_.host_now-body_.received_at)/1e6 : -1.,
+           body_min_[0],body_max_[0],body_min_[1],body_max_[1],body_min_[2],body_max_[2],
+           body_.pose[2].position[1],body_.pose[3].position[1]);
+  for(int i=0;i<3;i++) body_min_[i]=1e9f,body_max_[i]=-1e9f;
   for (int i = 0; i < 3; i++) stats_head_min_[i] = 1e9f, stats_head_max_[i] = -1e9f;
 }
 
@@ -320,6 +338,7 @@ bool Runtime::device_connected(vr::TrackedDeviceIndex_t i) const {
 
 vr::TrackedDevicePose_t Runtime::device_pose(vr::TrackedDeviceIndex_t i, float seconds_from_now) const {
   if(i>=kBodyFirst && i<kDeviceCount) {
+    body_reads_++;
     std::lock_guard<std::mutex> lock(m_);return to_openvr(body_.pose[i-kBodyFirst],connected_[i]);
   }
   int d = device_to_svr(i);
@@ -329,6 +348,7 @@ vr::TrackedDevicePose_t Runtime::device_pose(vr::TrackedDeviceIndex_t i, float s
 
 vr::TrackedDevicePose_t Runtime::device_frame_pose(vr::TrackedDeviceIndex_t i) const {
   if(i>=kBodyFirst && i<kDeviceCount) {
+    body_reads_++;
     std::lock_guard<std::mutex> lock(m_);return to_openvr(body_.pose[i-kBodyFirst],connected_[i]);
   }
   int d = device_to_svr(i);

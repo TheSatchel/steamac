@@ -12,6 +12,7 @@ class PoseHistory
 {
 public:
 	static constexpr ns max_extrapolation = 100'000'000; // like WiVRn's max_extrapolation_ns
+	static constexpr ns max_age = 200'000'000;
 	static constexpr size_t max_samples = 64;
 
 	void add(const TrackedPose &);
@@ -21,6 +22,7 @@ public:
 private:
 	mutable std::mutex mutex;
 	std::deque<TrackedPose> samples; // sorted by time
+	std::optional<ns> latest_source;
 };
 
 Pose multiply(const Pose & a, const Pose & b); // a * b: b expressed in a's frame

@@ -56,4 +56,14 @@ The first live trial confirmed improved head latency and real finger motion, but
 
 `SVR_CAP_BODY_TRACKERS` gates the additive `SVR_BODY` query. `VRL_BODY` carries at most eight valid poses (hips, chest, feet, knees, elbows) in the same OpenXR/OpenVR stage coordinates as the HMD. The guest exposes them as OpenVR device indices 3–10, class `GenericTracker`, with stable `satchel-body-N` serials. Freshness expires after 200 ms and device activation/deactivation events follow the valid mask. Existing frame and hand message layouts remain unchanged.
 
-The 0.1.1 development build is installed locally. It replaces the launcher’s default OSC body path with native trackers. Optional OSC output remains available through its explicit host argument. The user confirmed that head latency improved and that finger tracking works, but reported jitter; parent-local adaptive filtering was added and validated synthetically. Final finger/body feedback after this update is pending.
+The 0.1.1 development build replaced the launcher’s default OSC body path with native trackers. Optional OSC output remains available through its explicit host argument. The user confirmed that head latency improved and that finger tracking works, but reported jitter, loss-related drift and no body following. Quest logs showed `xrLocateBodyJointsFB` failing with `XR_ERROR_INITIALIZATION_FAILED`; restarting the WiVRn client restored all eight body validity bits, but the user still reported no avatar body following. Valid packets alone are not acceptance.
+
+### Tracking loss recovery (0.1.2 development build)
+
+- Pose history records invalid samples, rejects reordered samples from older production times, clears the previous trajectory on loss/reacquisition, and expires validity after 200 ms. Velocity fields are used only when the source marks them valid.
+- In hand mode, an inferred wrist without positional tracking does not remain a live controller or full skeleton. Physical controllers retain their existing validity behavior.
+- A live headset with no valid body data for three seconds triggers BODY removal from the WiVRn tracking request, followed by reinsertion 500 ms later. WiVRn 26.9 destroys/recreates its body tracker on this transition. Retries are at least ten seconds apart and limited to three until valid data returns; a sleeping headset does not trigger retries.
+- Native body device class and discovered identity survive a temporary invalid pose. Their poses become invalid, rather than emitting a device-unplug event that can discard calibration. A real headset disconnect clears the discovered mask.
+- Optional `STEAMAC_VR_LOG=1` diagnostics report whether the game reads native body poses and whether hip coordinates change. Logs remain local.
+
+Real avatar body following and loss/reacquisition behavior still require in-headset verification after installing this build.

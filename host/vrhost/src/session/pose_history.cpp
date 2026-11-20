@@ -80,6 +80,14 @@ static std::array<float, 4> integrate(const std::array<float, 4> & q, const std:
 void PoseHistory::add(const TrackedPose & p)
 {
 	std::lock_guard lock(mutex);
+	const ns source = p.source_time ? p.source_time : p.time;
+	if (latest_source && source < *latest_source)
+		return; // a delayed prediction must not resurrect tracking after a loss
+	if (!samples.empty() && ((latest_source && source - *latest_source > max_age) ||
+	                         p.orientation_valid != samples.back().orientation_valid ||
+	                         p.position_valid != samples.back().position_valid))
+		samples.clear(); // never blend a lost/reacquired device with the previous trajectory
+	latest_source = source;
 	auto it = std::upper_bound(samples.begin(), samples.end(), p.time, [](ns t, const TrackedPose & s) { return t < s.time; });
 	if (it != samples.begin() and std::prev(it)->time == p.time)
 		*std::prev(it) = p;
@@ -93,6 +101,7 @@ void PoseHistory::clear()
 {
 	std::lock_guard lock(mutex);
 	samples.clear();
+	latest_source.reset();
 }
 
 std::optional<TrackedPose> PoseHistory::at(ns t) const
@@ -126,13 +135,17 @@ std::optional<TrackedPose> PoseHistory::at(ns t) const
 	const TrackedPose & s = it == samples.begin() ? samples.front() : samples.back();
 	TrackedPose r = s;
 	r.time = t;
-	if (t > s.time)
+	if (t > s.time && (s.orientation_valid || s.position_valid))
 	{
 		float dt = float(std::min<ns>(t - s.time, max_extrapolation)) * 1e-9f;
 		r.pose.orientation = integrate(s.pose.orientation, s.angular_velocity, dt);
 		for (int i = 0; i < 3; ++i)
 			r.pose.position[i] += s.linear_velocity[i] * dt;
 	}
+	if (t - (s.source_time ? s.source_time : s.time) > max_age)
+		r.orientation_valid = r.position_valid = false;
+	if (!r.orientation_valid && !r.position_valid)
+		r.linear_velocity = r.angular_velocity = {};
 	return r;
 }
 } // namespace vrhost

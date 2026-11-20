@@ -208,6 +208,7 @@ static void fill_view(float fov[2][4], float *ipd) {
  * (GetProjectionRaw, GetEyeToHeadTransform), so its submits must still carry the hello's view. */
 static int live_view;
 static int body_mode;
+static int body_loss_test, body_calls;
 static int pacer;                         /* --pacer N: release every Nth frame (0: every frame, no flags) */
 #define PACER_LAG_NS 1000000ll            /* a pacer frame reaches the guest this long after its wake-up */
 static void fill_frame_view(float fov[2][4], float *ipd) {
@@ -326,6 +327,7 @@ static int handle(int fd, const void *buf, size_t n) {
     case SVR_BODY: {
       struct svr_body_rep r={{SVR_BODY,sizeof r}};
       r.host_now=r.time=r.received_at=now_ns();r.valid_mask=body_mode ? 0xc3 : 0;
+      if(body_loss_test && ++body_calls==2) r.valid_mask=0;
       for(int i=0;i<SVR_BODY_TRACKERS;i++) {
         r.pose[i].orientation[3]=1;r.pose[i].position[0]=1.f+.1f*i;r.pose[i].position[1]=1.f;
         r.pose[i].flags=SVR_POSE_VALID|SVR_POSE_TRACKED;
@@ -368,6 +370,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--once")) once = 1;
     else if (!strcmp(argv[i], "--live-view")) live_view = 1;
     else if (!strcmp(argv[i], "--body")) body_mode = 1;
+    else if (!strcmp(argv[i], "--body-loss")) body_mode = body_loss_test = 1;
     else if (!strcmp(argv[i], "--pacer") && i + 1 < argc && atoi(argv[i + 1]) >= 2) pacer = atoi(argv[++i]);
     else {
       fprintf(stderr, "usage: vr-fakehost --socket PATH [--script FILE] [--log FILE] [--hz N] [--profile touch|index] [--once] [--live-view] [--pacer N]\n");

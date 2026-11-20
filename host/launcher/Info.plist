@@ -47,9 +47,9 @@
 	<key>SteamacGameStatsURL</key>
 	<string>https://steamac-game-stats.steamac-game-stats.workers.dev</string>
 	<key>CFBundleVersion</key>
-	<string>1002</string>
+	<string>1003</string>
 	<key>SatchelForkVersion</key>
-	<string>0.1.1-dev</string>
+	<string>0.1.2-dev</string>
 	<key>SatchelSourceRepository</key>
 	<string>https://github.com/TheSatchel/steamac</string>
 </dict>
