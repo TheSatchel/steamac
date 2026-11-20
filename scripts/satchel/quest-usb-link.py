@@ -4,6 +4,7 @@
 import argparse
 import datetime
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -141,16 +142,29 @@ def tick(ops, state, now):
 def install(args):
     directory = args.state_dir
     directory.mkdir(parents=True, exist_ok=True)
+    directory.chmod(0o700)
+    target = 'gui/' + str(os.getuid())
+    subprocess.run(['launchctl', 'bootout', target + '/' + LABEL], capture_output=True)
+    # launchd must not depend on Downloads access or the user keeping an installer folder.
+    tools = directory / 'platform-tools'
+    tools.mkdir(exist_ok=True)
+    bundled_adb = tools / 'adb'
+    if args.adb.resolve() != bundled_adb.resolve():
+        shutil.copy2(args.adb, bundled_adb)
+    bundled_adb.chmod(0o700)
+    for name in ['NOTICE.txt', 'source.properties']:
+        source = args.adb.parent / name
+        if source.is_file() and source.resolve() != (tools / name).resolve():
+            shutil.copy2(source, tools / name)
+    (tools / 'adb.sha256').write_text(hashlib.sha256(bundled_adb.read_bytes()).hexdigest() + '\n')
     script = directory / 'quest-usb-link.py'
     if Path(__file__).resolve() != script.resolve():
         shutil.copy2(__file__, script)
     script.chmod(0o700)
     agent = Path.home() / 'Library/LaunchAgents' / (LABEL + '.plist')
     agent.parent.mkdir(parents=True, exist_ok=True)
-    target = 'gui/' + str(os.getuid())
-    subprocess.run(['launchctl', 'bootout', target + '/' + LABEL], capture_output=True)
     config = {'Label': LABEL, 'ProgramArguments': ['/usr/bin/python3', str(script), '--once',
-              '--adb', str(args.adb.resolve()), '--control-socket', str(args.control_socket),
+              '--adb', str(bundled_adb), '--control-socket', str(args.control_socket),
               '--state-dir', str(directory)], 'StartInterval': 5, 'ThrottleInterval': 5, 'RunAtLoad': True,
               'ProcessType': 'Background', 'StandardOutPath': str(directory / 'agent.log'),
               'StandardErrorPath': str(directory / 'agent.log')}

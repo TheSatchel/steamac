@@ -92,7 +92,7 @@ Install with the known platform-tools path:
 python3 scripts/satchel/quest-usb-link.py --install --adb /absolute/path/to/platform-tools/adb
 ```
 
-The installed script, local status and event log live in `~/Library/Application Support/steamac/quest-usb-link/`. The LaunchAgent plist lives in `~/Library/LaunchAgents/com.thesatchel.quest-usb-link.plist`. To inspect or stop it:
+The installed script, a hash-recorded copy of the selected ADB binary, its license, local status and event log live in `~/Library/Application Support/steamac/quest-usb-link/`. Copying ADB there avoids background access to Downloads and keeps the helper working if the installer folder is moved. The LaunchAgent plist lives in `~/Library/LaunchAgents/com.thesatchel.quest-usb-link.plist`. To inspect or stop it:
 
 ```sh
 python3 "$HOME/Library/Application Support/steamac/quest-usb-link/quest-usb-link.py" --status
