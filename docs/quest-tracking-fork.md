@@ -25,7 +25,7 @@ No EAC bypass, game binary modification, fake full-body measurements, changes to
 
 ## Status
 
-Built and installed locally from the task branch. The guest loaded the expected new runtime hash. Real-headset acceptance remains pending: Quest was asleep at the end of installation.
+Built and installed locally from the task branch. The guest loaded the expected new runtime hash. Real Quest input packets and ADB USB video streaming have been observed. A 30-second sampling run stayed connected in all 15 samples, with reported head data age 0–5 ms. Visible finger articulation, body OSC calibration and perceived head-follow behavior still require user acceptance.
 
 Verified so far:
 - Native runtime regression suite: 543 checks, zero failures.
