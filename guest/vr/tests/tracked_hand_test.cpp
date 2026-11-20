@@ -53,6 +53,19 @@ int main() {
  assert(max_noise<.001f);
  float unchanged=bones[5].position.v[0];bones[5].position.v[0]=99;filter.apply(t,bones);assert(bones[5].position.v[0]==unchanged);
  for(int i=0;i<8;i++){t+=8333333;bones[5].position.v[0]=.03f;filter.apply(t,bones);}assert(bones[5].position.v[0]>.027f);
- t+=300000000;bones[5].position.v[0]=.1f;filter.apply(t,bones);assert(bones[5].position.v[0]==.1f);
+ t+=300000000;bones[5].position.v[0]=.1f;filter.apply(t,bones);
+ assert(bones[5].position.v[0]>.03f && bones[5].position.v[0]<.1f); // no snap after a gap
+ for(int i=0;i<25;i++){t+=8333333;bones[5].position.v[0]=.1f;filter.apply(t,bones);}
+ assert(bones[5].position.v[0]>.095f);
+ // Switching from real fingers to controller estimation must not jump to the other pose in one frame.
+ t+=8333333;bones[5].position.v[0]=0;filter.apply(t,bones,false);
+ assert(bones[5].position.v[0]>.07f);
+ vr::VRSkeletalSummaryData_t summary{};for(float &c:summary.flFingerCurl)c=1;
+ filter.apply_summary(t,summary,true);
+ t+=8333333;for(float &c:summary.flFingerCurl)c=0;
+ filter.apply_summary(t,summary,false);
+ for(float c:summary.flFingerCurl)assert(c>.8f && c<1.f);
+ for(int i=0;i<30;i++){t+=8333333;for(float &c:summary.flFingerCurl)c=0;filter.apply_summary(t,summary,false);}
+ for(float c:summary.flFingerCurl)assert(c<.01f);
  std::puts("PASS: tracked joints, both hands, rigid-motion invariance, invalid data, timestamp prediction");
 }

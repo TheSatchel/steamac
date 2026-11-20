@@ -62,6 +62,8 @@ class Runtime {
   // input snapshot (the frame's)
   bool tracked_hand(int hand, vr::VRBoneTransform_t *out = nullptr);
   bool tracked_hand_summary(int hand, vr::VRSkeletalSummaryData_t &out);
+  void filter_hand_bones(int hand, vr::VRBoneTransform_t *out, bool tracked);
+  void filter_hand_summary(int hand, vr::VRSkeletalSummaryData_t &out, bool tracked);
   float input(int hand, int id) const;
   uint32_t profile() const;
 
@@ -103,6 +105,7 @@ class Runtime {
   int64_t last_hand_poll_ = 0;
   svr_hand_rep hands_[2]{};
   HandFilter hand_filter_[2];
+  bool hand_filter_active_[2] = {};
   svr_frame_rep latest_{};  // newest snapshot
   svr_frame_rep frame_{};   // snapshot of the frame being rendered
   int64_t clock_offset_ = 0;  // guest = host + offset

@@ -2,6 +2,7 @@
 #include "check.h"
 #include "session/pose_history.h"
 #include "session/body_recovery.h"
+#include "session/hand_pose_recovery.h"
 #include <cmath>
 
 using namespace vrhost;
@@ -65,6 +66,31 @@ int main()
 	CHECK(lost.at(170'000'000)->position_valid);
 	CHECK(near(lost.at(170'000'000)->pose.position[0],2)); // reacquire without sweeping through stale positions
 	CHECK(!lost.at(400'000'000)->position_valid);
+
+	// Brief optical loss holds still. Reacquisition blends the correction, not normal hand motion.
+	HandPoseRecovery hand;
+	TrackedPose visible{.device=Device::left_grip,.time=1'000'000'000,.pose=yaw(0,0),
+	                    .linear_velocity={2,0,0},.orientation_valid=true,.position_valid=true,.hand_tracking=true};
+	CHECK(near(hand.at(visible,visible.time,visible.time)->pose.position[0],0));
+	auto hidden=visible;hidden.orientation_valid=hidden.position_valid=false;
+	auto held=hand.at(hidden,1'010'000'000,1'010'000'000);
+	CHECK(held->position_valid && held->inferred);
+	CHECK(near(held->pose.position[0],0) && near(held->linear_velocity[0],0));
+	CHECK(!hand.at(hidden,1'200'000'000,1'200'000'000)->position_valid);
+	visible.pose=yaw(1,1);
+	auto start=hand.at(visible,1'210'000'000,1'210'000'000);
+	CHECK(near(start->pose.position[0],0) && near(start->pose.orientation[1],0));
+	visible.pose.position[0]=1.2f;
+	auto middle=hand.at(visible,1'290'000'000,1'290'000'000);
+	CHECK(near(middle->pose.position[0],.7f));
+	CHECK(middle->inferred);
+	CHECK(near(hand.at(visible,1'380'000'000,1'380'000'000)->pose.position[0],1.2f));
+	visible.pose.position[0]=1.8f;
+	CHECK(near(hand.at(visible,1'390'000'000,1'390'000'000)->pose.position[0],1.8f));
+	hidden.hand_tracking=false; // physical controllers must retain their own tracking behavior
+	CHECK(!hand.at(hidden,1'400'000'000,1'400'000'000)->position_valid);
+	hand.clear();
+	CHECK(!hand.at(std::nullopt,1'410'000'000,1'410'000'000));
 
 	// Removing the headset must not trigger retries. Live-head/invalid-body recreates only BODY.
 	BodyRecovery recovery;

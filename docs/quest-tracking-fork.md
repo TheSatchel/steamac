@@ -69,3 +69,13 @@ The 0.1.1 development build replaced the launcher’s default OSC body path with
 Real avatar body following and loss/reacquisition behavior still require in-headset verification after installing this build.
 
 The 0.1.2 build was installed with runtime SHA-256 `e62324c41eff349b7f41b23825fe49ccf8f2b2c35d8d9f5a17677be3e33acfc8`. Host pose-history, tracking-packet, tracking-bridge and VR end-to-end tests passed. Under FEX, 543 unit checks, native body loss/recovery, Touch/Index title-style reads, standby, live-view and pacing regressions passed. The app's two-round VR startup/self-test and code-signature verification passed. Live VRChat logs then showed `mask=ff`, 14,688–20,112 body-pose reads per five seconds, changing hip coordinates and 4.5–7.7 ms body-packet age. VRChat entered a world again. These measurements prove transport/runtime delivery, not avatar calibration or user-visible tracking acceptance.
+
+### Optical hand reacquisition (0.1.3 development build)
+
+The next physical trial still reported large hand jumps and no independent foot lift. The two observations have different limits:
+
+- Optical hand poses now hold their last trusted position for at most 180 ms of occlusion, without velocity extrapolation, and return invalid after that bound. Reacquisition eases out the position/orientation correction over 160 ms. Continuously tracked motion and physical-controller poses bypass this recovery filter. The same transform is applied to the hand joints so their absolute positions cannot cancel the grip correction.
+- The guest filters transitions between real and estimated finger bones/curls, instead of clearing the filter and snapping to the other source. This applies only after optical skeleton data has actually been used.
+- Quest body packets can contain **Generative Legs**, which estimate legs from upper-body signals. Valid foot transforms are not proof of independently measured foot movement. Forwarding those packets cannot guarantee reproducing a foot lift or kick while the upper body stays still. See [Meta's explanation](https://developers.meta.com/vr/blog/inside-out-body-tracking-and-generative-legs/) and the [current Movement SDK limitations](https://developers.meta.com/vr/documentation/unreal/unreal-movement-overview/).
+
+Acceptance for hand recovery is synthetic loss/reappearance tests followed by the user's in-headset test. Independent foot tracking requires another source of foot observations; it is not certified by this fork.

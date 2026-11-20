@@ -102,7 +102,7 @@ static vrl_pose to_vrl(const std::optional<TrackedPose> & t)
 	std::copy(t->linear_velocity.begin(), t->linear_velocity.end(), p.lin_vel);
 	std::copy(t->angular_velocity.begin(), t->angular_velocity.end(), p.ang_vel);
 	const bool valid = t->orientation_valid && (t->device == Device::head || t->position_valid);
-	p.flags = (valid ? VRL_POSE_VALID | VRL_POSE_VEL : 0) | (valid && t->position_valid ? VRL_POSE_TRACKED : 0);
+	p.flags = (valid ? VRL_POSE_VALID | VRL_POSE_VEL : 0) | (valid && t->position_valid && !t->inferred ? VRL_POSE_TRACKED : 0);
 	return p;
 }
 

@@ -211,15 +211,29 @@ bool Runtime::tracked_hand(int hand, vr::VRBoneTransform_t *out) {
   poll_hands();
   std::lock_guard<std::mutex> lock(m_);
   const auto &h=hands_[hand];
-  if (!h.active) { hand_filter_[hand].reset(); return false; }
+  if (!h.active) return false;
   vr::VRBoneTransform_t bones[kHandBoneCount];
   int d=hand ? SVR_DEV_RIGHT_GRIP : SVR_DEV_LEFT_GRIP;
   float dt=std::clamp(float(h.time-latest_.pose_time)*1e-9f,-0.1f,0.1f);
   svr_pose grip=extrapolate(latest_.pose[d],dt);
-  if (!tracked_hand_bones(h,grip,bones)) { hand_filter_[hand].reset(); return false; }
-  hand_filter_[hand].apply(h.time,bones);
+  if (!tracked_hand_bones(h,grip,bones)) return false;
   if(out) std::copy(bones,bones+kHandBoneCount,out);
   return true;
+}
+
+void Runtime::filter_hand_bones(int hand, vr::VRBoneTransform_t *out, bool tracked) {
+  if(hand<0 || hand>1 || !out) return;
+  std::lock_guard<std::mutex> lock(m_);
+  hand_filter_active_[hand] |= tracked;
+  if (!hand_filter_active_[hand]) return;
+  hand_filter_[hand].apply(now_ns(),out,tracked);
+}
+void Runtime::filter_hand_summary(int hand, vr::VRSkeletalSummaryData_t &out, bool tracked) {
+  if(hand<0 || hand>1) return;
+  std::lock_guard<std::mutex> lock(m_);
+  hand_filter_active_[hand] |= tracked;
+  if (!hand_filter_active_[hand]) return;
+  hand_filter_[hand].apply_summary(now_ns(),out,tracked);
 }
 
 bool Runtime::tracked_hand_summary(int hand, vr::VRSkeletalSummaryData_t &out) {

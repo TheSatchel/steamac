@@ -9,6 +9,7 @@
 #include "encoder/vt_encoder.h"
 #include "session/clock.h"
 #include "session/body_recovery.h"
+#include "session/hand_pose_recovery.h"
 #include "wivrn/dnssd_publisher.h"
 #include "wivrn/known_keys.h"
 
@@ -295,6 +296,8 @@ struct WivrnSession::impl
 	BodyRecovery body_recovery;
 	ns last_body_valid = 0;
 	std::array<PoseHistory, size_t(Device::count)> history;
+	std::array<HandPoseRecovery, size_t(Device::count)> hand_recovery;
+	std::array<bool,2> hand_mode{};
 	std::mutex view_mutex;
 	std::array<Pose, 2> view_pose{};  // eye relative to head
 	std::array<Fov, 2> view_fov{};
@@ -825,8 +828,10 @@ void WivrnSession::impl::handle(fh::packets && packet)
 		        {
 			        const auto before=clock.offset();
 			        clock.add(pkt.query, pkt.response);
-			        if (before.stable && std::abs(clock.offset().b-before.b)>20'000'000)
-				        for(auto &h:history) h.clear(); // do not mix samples from discontinuous clock mappings
+			        if (before.stable && std::abs(clock.offset().b-before.b)>20'000'000) {
+				        for(auto &h:history) h.clear();
+				        for(auto &h:hand_recovery) h.clear();
+			        }
 			        stats.timesync++;
 		        }
 		        else if constexpr (std::is_same_v<T, fh::tracking>)
@@ -838,6 +843,9 @@ void WivrnSession::impl::handle(fh::packets && packet)
 			        stats.last_tracking_received_ns = now_ns();
 			        stats.last_tracking_source_ns = clock.from_headset(pkt.production_timestamp);
 			        ns t = clock.from_headset(pkt.timestamp);
+			        for (int h=0;h<2;h++)
+				        if (pkt.interaction_profiles[h] != wivrn::interaction_profile::none)
+					        hand_mode[h] = pkt.interaction_profiles[h] == wivrn::interaction_profile::ext_hand_interaction_ext;
 			        std::vector<TrackedPose> poses;
 			        for (auto & dp: pkt.device_poses)
 			        {
@@ -861,9 +869,10 @@ void WivrnSession::impl::handle(fh::packets && packet)
 				        if (!finite) { tp.pose = {}; tp.orientation_valid = tp.position_valid = false; }
 				        const int hand = d == Device::left_grip || d == Device::left_aim ? 0 :
 				                         d == Device::right_grip || d == Device::right_aim ? 1 : -1;
+				        tp.hand_tracking = hand >= 0 && hand_mode[hand];
 				        // OpenXR may keep a valid, inferred hand pose after camera tracking is lost.
 				        // Do not present that extrapolated wrist as a live controller to the game.
-				        if (hand >= 0 && pkt.interaction_profiles[hand] == wivrn::interaction_profile::ext_hand_interaction_ext &&
+				        if (tp.hand_tracking &&
 				            !(dp.flags & fh::position_tracked))
 					        tp.orientation_valid = tp.position_valid = false;
 				        if (!(dp.flags & fh::linear_velocity_valid) || !tp.position_valid)
@@ -914,6 +923,22 @@ void WivrnSession::impl::handle(fh::packets && packet)
 			        }
 			        if (pkt.joints && !((*pkt.joints)[XR_HAND_JOINT_WRIST_EXT].flags & fh::position_tracked))
 				        hand.active = false;
+			        // Apply the same reacquisition transform to grip and skeleton; otherwise
+			        // absolute wrist coordinates would cancel the grip correction in the guest.
+			        if (hand.active) {
+				        auto d = hand.hand ? Device::right_grip : Device::left_grip;
+				        auto raw = history[size_t(d)].at(hand.time);
+				        auto stable = hand_recovery[size_t(d)].at(raw,hand.time,now_ns());
+				        if (!raw || !raw->orientation_valid || !raw->position_valid) hand.active = false;
+				        if (raw && stable && raw->orientation_valid && raw->position_valid && stable->inferred) {
+					        auto q=raw->pose.orientation;
+					        Pose inverse{.orientation={-q[0],-q[1],-q[2],q[3]}};
+					        auto p=raw->pose.position; for(float &v:p) v=-v;
+					        inverse.position=rotate(inverse.orientation,p);
+					        auto delta=multiply(stable->pose,inverse);
+					        for(auto &joint:hand.joint) joint.pose=multiply(delta,joint.pose);
+				        }
+			        }
 			        if (listener) listener->on_hand(hand);
 		        }
 		        else if constexpr (std::is_same_v<T, fh::meta_body>)
@@ -1065,6 +1090,8 @@ void WivrnSession::impl::run_connection(wivrn::TCP && tcp)
 	clock.reset();
 	for (auto & h: history)
 		h.clear();
+	for (auto & h: hand_recovery) h.clear();
+	hand_mode = {};
 	on_headset_info(hi);
 	is_connected = true;
 	if (listener)
@@ -1473,7 +1500,8 @@ std::optional<TrackedPose> WivrnSession::pose_at(Device d, ns t)
 {
 	if (d >= Device::count)
 		return std::nullopt;
-	return p->history[size_t(d)].at(t);
+	auto raw = p->history[size_t(d)].at(t);
+	return d == Device::head ? raw : p->hand_recovery[size_t(d)].at(raw,t,now_ns());
 }
 
 bool WivrnSession::views_at(ns t, std::array<Pose, 2> & pose, std::array<Fov, 2> & fov)

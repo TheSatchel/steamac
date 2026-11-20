@@ -278,9 +278,12 @@ class Input : public StubIVRInput {
     if (hand < -1) return VRInputError_InvalidHandle;
     if (hand < 0) return VRInputError_NoData;
     Runtime &rt = Runtime::get();
-    if (rt.tracked_hand_summary(hand, *s)) return VRInputError_None;
-    finger_curls(hand, [&](int id) { return rt.input(hand, id); }, s->flFingerCurl);
-    for (float &f : s->flFingerSplay) f = 0.2f;
+    bool tracked=rt.tracked_hand_summary(hand, *s);
+    if(!tracked) {
+      finger_curls(hand, [&](int id) { return rt.input(hand, id); }, s->flFingerCurl);
+      for (float &f : s->flFingerSplay) f = 0.2f;
+    }
+    rt.filter_hand_summary(hand,*s,tracked);
     return VRInputError_None;
   }
   // "Compressed" bone data is only ever handed back to DecompressSkeletalBoneData of the same runtime: a tag and
@@ -453,12 +456,15 @@ class Input : public StubIVRInput {
   };
   void bones(int hand, EVRSkeletalMotionRange range, VRBoneTransform_t *out) {
     Runtime &rt = Runtime::get();
-    if (rt.tracked_hand(hand, out)) return;
-    float raw[5], curl[5];
-    const float splay[5] = {0, 0, 0, 0, 0};
-    finger_curls(hand, [&](int id) { return rt.input(hand, id); }, raw);
-    hand_limit_curls(range, raw, curl);
-    hand_pose(hand, curl, splay, out);
+    bool tracked=rt.tracked_hand(hand, out);
+    if(!tracked) {
+      float raw[5], curl[5];
+      const float splay[5] = {0, 0, 0, 0, 0};
+      finger_curls(hand, [&](int id) { return rt.input(hand, id); }, raw);
+      hand_limit_curls(range, raw, curl);
+      hand_pose(hand, curl, splay, out);
+    }
+    rt.filter_hand_bones(hand,out,tracked);
   }
   // -2 invalid handle, -1 not bound (or not a manifest action), else hand
   int skeleton_hand(VRActionHandle_t a) const {

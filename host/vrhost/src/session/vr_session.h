@@ -99,6 +99,7 @@ struct TrackedPose
 	std::array<float, 3> linear_velocity{}, angular_velocity{};
 	bool orientation_valid = false, position_valid = false;
 	ns source_time = 0; // production time, before pose prediction; 0 for adapters without it
+	bool hand_tracking = false, inferred = false;
 };
 
 struct HandJoint
