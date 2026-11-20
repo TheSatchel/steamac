@@ -43,6 +43,8 @@ struct FakeHeadsetOptions
 	float refresh_hz = 72;
 	float yaw_amplitude = 0.3f, pitch_amplitude = 0, motion_hz = 0.159f;
 	bool controllers = false;
+	bool skeletons = false;
+	bool stale_tracking = false;
 	struct View
 	{
 		std::array<std::array<float, 4>, 2> orientation; // x, y, z, w per eye (view_info pose: the render pose)
@@ -81,6 +83,7 @@ struct FakeHeadsetResult
 	std::vector<std::pair<uint64_t, std::array<float, 4>>> view_orientation; // (frame index, view_info left eye) stream 0
 	bool got_stream_description = false;
 	bool got_tracking_control = false;
+	bool requested_hands = false, requested_body = false;
 	int timesync_queries = 0;
 	std::array<int, 2> decoded{};       // frames decoded per eye
 	std::array<int, 2> index_mismatch{}; // decoded frame index != frame_idx

@@ -71,3 +71,10 @@ clean:
 	rm -rf $(OUT)
 
 .PHONY: all check check-legacy stubs legacy clean
+
+$(OUT)/tracked_hand_test: tests/tracked_hand_test.cpp runtime/skeleton.cpp $(HDRS)
+	mkdir -p $(OUT)
+	$(CXX) $(CPPFLAGS) -I../../wmtr/include $(CXXFLAGS) -o $@ tests/tracked_hand_test.cpp runtime/skeleton.cpp -lm
+
+check-tracking: $(OUT)/tracked_hand_test
+	$(OUT)/tracked_hand_test

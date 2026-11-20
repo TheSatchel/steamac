@@ -80,7 +80,7 @@ struct HeadsetInfo
 	float preferred_refresh_rate = 0;
 	std::array<Fov, 2> fov;
 	std::vector<Codec> codecs; // most preferred first
-	bool hand_tracking = false, eye_gaze = false;
+	bool hand_tracking = false, eye_gaze = false, body_tracking = false;
 	std::string name;
 	std::optional<AudioFormat> speaker, microphone; // absent: the headset has none
 	// Encoder input and rate the adapter negotiated (A2). max_bitrate_bps: the protocol's ceiling (0 = none known);
@@ -98,6 +98,33 @@ struct TrackedPose
 	Pose pose;
 	std::array<float, 3> linear_velocity{}, angular_velocity{};
 	bool orientation_valid = false, position_valid = false;
+};
+
+struct HandJoint
+{
+	Pose pose;
+	float radius = 0;
+	uint32_t flags = 0; // bit 0 valid, bit 1 tracked
+};
+struct HandTracking
+{
+	uint32_t hand = 0;
+	ns time = 0, received_at = 0;
+	bool active = false;
+	std::array<HandJoint, 26> joint;
+};
+struct BodyJoint
+{
+	uint32_t tracker = 0; // VRChat OSC tracker id; 0 is head alignment
+	Pose pose;
+	uint32_t flags = 0;
+};
+struct BodyTracking
+{
+	ns time = 0, received_at = 0;
+	float confidence = 0;
+	bool full_body = false;
+	std::vector<BodyJoint> joint; // OpenXR FB/META body joint order
 };
 
 struct InputValue
@@ -152,6 +179,8 @@ public:
 	virtual void on_connected(const HeadsetInfo &) {}
 	virtual void on_disconnected() {}
 	virtual void on_tracking(std::span<const TrackedPose>) {}
+	virtual void on_hand(const HandTracking &) {}
+	virtual void on_body(const BodyTracking &) {}
 	virtual void on_input(std::span<const InputValue>) {}
 	virtual void on_refresh_rate(float hz) {}
 	// The session changed FrameTiming::render_divisor (A1): frames now span this many display periods.

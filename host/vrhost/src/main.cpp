@@ -52,6 +52,7 @@ static std::string g_control_socket;              // --control-socket
 static std::atomic<double> g_pipeline_p50_ms{0}; // last link report, for the control socket
 static std::atomic<double> g_compose_gpu_p50_ms{0}, g_submit_copied_p50_ms{0}, g_game_fps{0};
 static CompositorOptions g_quality;                // --upscaler / --sharpness / --force-srgb
+static uint16_t g_body_osc_port = 0;
 static uint32_t g_frames_in_flight = 0;            // --frames-in-flight
 
 static void usage()
@@ -552,7 +553,7 @@ static int accept_link(int & link_fd, const std::string & link_socket)
 static int serve_link(Adapter & adapter, int link_fd, const std::string & mach_name, int audio_fd)
 {
 	VrSession & session = *adapter.session;
-	VrPipeline pipeline(session, link_fd, mach_name, g_quality, g_frames_in_flight);
+	VrPipeline pipeline(session, link_fd, mach_name, g_quality, g_frames_in_flight, g_body_osc_port);
 	vra_region * audio_region = nullptr;
 	std::unique_ptr<AudioBridge> audio;
 	if (audio_fd >= 0)
@@ -572,7 +573,10 @@ static int serve_link(Adapter & adapter, int link_fd, const std::string & mach_n
 		         "\"submit_copied_ms\":%.2f,\"upscaler\":\"%s\"",
 		         g_game_fps.load(), ps.received.load(), ps.no_headset.load(), g_compose_gpu_p50_ms.load(),
 		         g_submit_copied_p50_ms.load(), pipeline.upscaler());
-		return std::string(b);
+		return std::string(b) + ",\"poses_forwarded\":" + std::to_string(ps.poses_forwarded.load())
+		       + ",\"hands_forwarded\":" + std::to_string(ps.hands_forwarded.load())
+		       + ",\"body_osc_packets\":" + std::to_string(ps.body_osc_packets.load())
+		       + ",\"pose_send_failures\":" + std::to_string(ps.pose_send_failures.load());
 	}, [&pipeline](uint32_t n) {
 		pipeline.set_frames_in_flight(n);
 		return true;
@@ -796,6 +800,7 @@ int main(int argc, char ** argv)
 			g_quality.sharpness = std::clamp(std::stof(next()), 0.0f, 1.0f);
 		else if (a == "--force-srgb")
 			g_quality.force_srgb = true;
+		else if (a == "--body-osc-port") { int port=std::stoi(next()); if(port<1024 || port>65535) return 2; g_body_osc_port=uint16_t(port); }
 		else if (a == "--frames-in-flight")
 		{
 			std::string v = next();

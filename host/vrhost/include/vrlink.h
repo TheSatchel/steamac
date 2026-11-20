@@ -32,6 +32,7 @@ enum vrl_type {
   VRL_POSES = 6,     /* host -> vm: struct vrl_poses, once per frame and on new tracking data */
   VRL_INPUT = 7,     /* host -> vm: struct vrl_input, on change */
   VRL_HAPTICS = 8,   /* vm -> host: struct vrl_haptics */
+  VRL_HAND = 10,     /* host -> vm: tracked OpenXR hand joints, one hand per datagram */
   VRL_STATE = 9,     /* host -> vm: struct vrl_state, on connect/disconnect/refresh-rate change */
 };
 
@@ -143,6 +144,24 @@ struct vrl_input {
   uint32_t profile; /* enum vrl_profile */
   uint32_t pad;
   float value[2][VRL_INPUT_COUNT]; /* [hand 0 left, 1 right][svr_input id] */
+};
+
+
+/* OpenXR hand-joint order (26 joints); poses are in the same stage space as VRL_POSES. */
+#define VRL_HAND_JOINTS 26
+struct vrl_hand_joint {
+  float orientation[4];
+  float position[3];
+  float radius;
+  uint32_t flags; /* VRL_POSE_VALID / VRL_POSE_TRACKED */
+};
+struct vrl_hand {
+  struct vrl_header h;
+  int64_t time;         /* pose prediction time, host clock */
+  int64_t received_at;  /* host receipt time: never compare a future prediction to now for freshness */
+  uint32_t hand;        /* 0 left, 1 right */
+  uint32_t active;
+  struct vrl_hand_joint joint[VRL_HAND_JOINTS];
 };
 
 struct vrl_haptics {

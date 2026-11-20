@@ -44,6 +44,9 @@ public:
 	void on_connected(const HeadsetInfo &) override;
 	void on_disconnected() override;
 	void on_tracking(std::span<const TrackedPose> p) override;
+	void on_hand(const HandTracking &h) override;
+	void on_body(const BodyTracking &b) override;
+	void on_render_rate(uint32_t divisor) override;
 	void on_input(std::span<const InputValue> v) override;
 	void on_refresh_rate(float hz) override;
 	void on_microphone(std::span<const int16_t> pcm, ns time) override;

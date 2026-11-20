@@ -256,7 +256,8 @@ class Input : public StubIVRInput {
     if (!level) return VRInputError_InvalidParam;
     std::lock_guard<std::mutex> g(m_);
     if (skeleton_hand(a) < -1) return VRInputError_InvalidHandle;
-    *level = VRSkeletalTracking_Estimated;  // fingers follow buttons, triggers and touch sensors
+    int hand = skeleton_hand(a);
+    *level = Runtime::get().tracked_hand(hand) ? VRSkeletalTracking_Full : VRSkeletalTracking_Estimated;
     return VRInputError_None;
   }
   EVRInputError GetSkeletalBoneData(VRActionHandle_t a, EVRSkeletalTransformSpace space, EVRSkeletalMotionRange range,
@@ -277,6 +278,7 @@ class Input : public StubIVRInput {
     if (hand < -1) return VRInputError_InvalidHandle;
     if (hand < 0) return VRInputError_NoData;
     Runtime &rt = Runtime::get();
+    if (rt.tracked_hand_summary(hand, *s)) return VRInputError_None;
     finger_curls(hand, [&](int id) { return rt.input(hand, id); }, s->flFingerCurl);
     for (float &f : s->flFingerSplay) f = 0.2f;
     return VRInputError_None;
@@ -451,6 +453,7 @@ class Input : public StubIVRInput {
   };
   void bones(int hand, EVRSkeletalMotionRange range, VRBoneTransform_t *out) {
     Runtime &rt = Runtime::get();
+    if (rt.tracked_hand(hand, out)) return;
     float raw[5], curl[5];
     const float splay[5] = {0, 0, 0, 0, 0};
     finger_curls(hand, [&](int id) { return rt.input(hand, id); }, raw);

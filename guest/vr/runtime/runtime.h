@@ -59,6 +59,8 @@ class Runtime {
   void note_render_head(const vr::TrackedDevicePose_t &p);
 
   // input snapshot (the frame's)
+  bool tracked_hand(int hand, vr::VRBoneTransform_t *out = nullptr);
+  bool tracked_hand_summary(int hand, vr::VRSkeletalSummaryData_t &out);
   float input(int hand, int id) const;
   uint32_t profile() const;
 
@@ -88,6 +90,10 @@ class Runtime {
   std::unique_ptr<Transport> transport_;
   svr_hello_rep hello_{};
   bool hello_view_ = false;  // hello_ carries a connected headset's eye size / FOV / IPD
+  void poll_hands();
+  std::mutex hand_poll_mutex_;
+  int64_t last_hand_poll_ = 0;
+  svr_hand_rep hands_[2]{};
   svr_frame_rep latest_{};  // newest snapshot
   svr_frame_rep frame_{};   // snapshot of the frame being rendered
   int64_t clock_offset_ = 0;  // guest = host + offset

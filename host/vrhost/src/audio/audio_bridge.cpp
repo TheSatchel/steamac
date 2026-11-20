@@ -110,6 +110,10 @@ void AudioBridge::on_tracking(std::span<const TrackedPose> p)
 		next->on_tracking(p);
 }
 
+void AudioBridge::on_hand(const HandTracking &h) { if(next) next->on_hand(h); }
+void AudioBridge::on_body(const BodyTracking &b) { if(next) next->on_body(b); }
+void AudioBridge::on_render_rate(uint32_t divisor) { if(next) next->on_render_rate(divisor); }
+
 void AudioBridge::on_input(std::span<const InputValue> v)
 {
 	if (next)

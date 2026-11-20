@@ -68,8 +68,8 @@ void SessionEncoderSink::encode(int eye, CVPixelBufferRef buffer, const LinkFram
 }
 
 VrPipeline::VrPipeline(VrSession & session, int link_fd, const std::string & mach_name, CompositorOptions opt,
-                       uint32_t frames_in_flight) :
-        session(session), opt(opt), in_flight(frames_in_flight)
+                       uint32_t frames_in_flight, uint16_t body_osc_port) :
+        session(session), body_osc(body_osc_port), opt(opt), in_flight(frames_in_flight)
 {
 	server = std::make_unique<VrLinkServer>(
 	        link_fd, mach_name, [this](const LinkFrame & f) { on_frame(f); },
@@ -200,6 +200,38 @@ void VrPipeline::send_input()
 	server->send(&m, sizeof m);
 }
 
+void VrPipeline::on_tracking(std::span<const TrackedPose> poses)
+{
+	if (poses.empty() || !server) return;
+	const ns now = now_ns();
+	// Coalesce the client's prediction samples: delivery stays independent of game rendering,
+	// while at most 250 updates/s enter the local datagram channel.
+	if (now - last_pose_push.load() < 4'000'000) return;
+	last_pose_push = now;
+	vrl_poses p{};
+	p.h = {VRL_POSES, sizeof p};
+	p.time = std::clamp<ns>(next_display.load(), now, now + 100'000'000);
+	for (int d = 0; d < VRL_DEV_COUNT; ++d) p.pose[d] = to_vrl(session.pose_at(Device(d), p.time));
+	if(server->send(&p, sizeof p)) st.poses_forwarded++; else st.pose_send_failures++;
+}
+
+void VrPipeline::on_hand(const HandTracking &hand)
+{
+	if (!server || hand.hand > 1) return;
+	vrl_hand h{};
+	h.h = {VRL_HAND, sizeof h}; h.hand = hand.hand; h.active = hand.active;
+	h.time = hand.time; h.received_at = hand.received_at;
+	for (size_t i = 0; i < hand.joint.size(); ++i) {
+		const auto &in = hand.joint[i]; auto &out = h.joint[i];
+		std::copy(in.pose.orientation.begin(), in.pose.orientation.end(), out.orientation);
+		std::copy(in.pose.position.begin(), in.pose.position.end(), out.position);
+		out.radius = in.radius; out.flags = in.flags;
+	}
+	if(server->send(&h, sizeof h)) st.hands_forwarded++;
+}
+
+void VrPipeline::on_body(const BodyTracking &body) { if(body_osc.send(body)) st.body_osc_packets++; }
+
 void VrPipeline::on_input(std::span<const InputValue> values)
 {
 	vrl_input m{};
@@ -259,6 +291,7 @@ void VrPipeline::frame_clock()
 			in_flight.wait(issued, ns(1e9 / std::max(refresh.load(), 1.0f)), now_ns());
 		FrameTiming t = session.next_frame_timing();
 		issued = t.frame_id;
+		next_display = t.predicted_display;
 		vrl_timing tm{};
 		tm.h = {VRL_TIMING, sizeof tm};
 		tm.frame_id = t.frame_id;

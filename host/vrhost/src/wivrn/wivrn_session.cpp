@@ -31,6 +31,7 @@
 #include <ctime>
 #include <map>
 #include <poll.h>
+#include <netinet/tcp.h>
 #include <random>
 #include <unistd.h>
 
@@ -55,6 +56,7 @@ class ClockOffset
 	std::vector<sample> samples;
 	size_t index = 0;
 	std::atomic<int64_t> b{0};
+	std::atomic<bool> ready{false};
 	std::atomic<int> interval_ms{10};
 
 public:
@@ -65,11 +67,13 @@ public:
 		samples.clear();
 		index = 0;
 		b = 0;
+		ready = false;
 		interval_ms = 10;
 	}
 	void add(int64_t query, int64_t response)
 	{
 		int64_t now = now_ns();
+		if (query <= 0 || response <= 0 || now < query || now-query > 1'000'000'000) return;
 		std::lock_guard lock(mutex);
 		sample s{query, response, now};
 		if (samples.size() < num_samples)
@@ -95,10 +99,11 @@ public:
 		x0 /= samples.size();
 		y0 /= samples.size();
 		b = int64_t(y0 - x0);
+		ready = true;
 	}
 	bool stable() const
 	{
-		return b != 0;
+		return ready;
 	}
 	int64_t to_headset(int64_t t) const { return t + b; }
 	wivrn::clock_offset offset() const { return wivrn::clock_offset{.b = b, .stable = stable()}; }
@@ -285,6 +290,7 @@ struct WivrnSession::impl
 	std::atomic<bool> mic_wanted{false}; // set_microphone(); re-sent on every connection
 
 	ClockOffset clock;
+	th::tracking_control tracking_request;
 	std::array<PoseHistory, size_t(Device::count)> history;
 	std::mutex view_mutex;
 	std::array<Pose, 2> view_pose{};  // eye relative to head
@@ -704,6 +710,7 @@ void WivrnSession::impl::on_headset_info(const fh::headset_info_packet & hi)
 		}
 	}
 	h.hand_tracking = hi.hand_tracking;
+	h.body_tracking = hi.body_tracking != fh::body_type::none;
 	h.eye_gaze = hi.eye_gaze;
 	h.name = hi.system_name;
 	if (hi.speaker and valid_audio(*hi.speaker))
@@ -762,7 +769,14 @@ void WivrnSession::impl::on_headset_info(const fh::headset_info_packet & hi)
 		for (XrDuration t = 0; t <= latency; t += (dev == wivrn::device_id::HEAD ? 3'000'000 : 10'000'000))
 			tc.pattern.push_back({.device = dev, .prediction_ns = t});
 	}
+	if (hi.hand_tracking) {
+		tc.pattern.push_back({.device = wivrn::device_id::LEFT_HAND, .prediction_ns = 20'000'000});
+		tc.pattern.push_back({.device = wivrn::device_id::RIGHT_HAND, .prediction_ns = 20'000'000});
+	}
+	if (hi.body_tracking != fh::body_type::none)
+		tc.pattern.push_back({.device = wivrn::device_id::BODY, .prediction_ns = 20'000'000});
 	tc.motions_to_photons = latency;
+	tracking_request = tc;
 	control->send(std::move(tc));
 
 	// Audio as WiVRn's audio_pipewire resume(): the streams the headset offered, in its own formats (the bridge
@@ -806,12 +820,20 @@ void WivrnSession::impl::handle(fh::packets && packet)
 		        using T = std::decay_t<decltype(pkt)>;
 		        if constexpr (std::is_same_v<T, fh::timesync_response>)
 		        {
+			        const auto before=clock.offset();
 			        clock.add(pkt.query, pkt.response);
+			        if (before.stable && std::abs(clock.offset().b-before.b)>20'000'000)
+				        for(auto &h:history) h.clear(); // do not mix samples from discontinuous clock mappings
 			        stats.timesync++;
 		        }
 		        else if constexpr (std::is_same_v<T, fh::tracking>)
 		        {
+			        if (!clock.stable()) return;
+			        const ns source_age=now_ns()-clock.from_headset(pkt.production_timestamp);
+			        if (source_age > 250'000'000 || source_age < -100'000'000) return;
 			        stats.tracking++;
+			        stats.last_tracking_received_ns = now_ns();
+			        stats.last_tracking_source_ns = clock.from_headset(pkt.production_timestamp);
 			        ns t = clock.from_headset(pkt.timestamp);
 			        std::vector<TrackedPose> poses;
 			        for (auto & dp: pkt.device_poses)
@@ -829,8 +851,13 @@ void WivrnSession::impl::handle(fh::packets && packet)
 				                .orientation_valid = bool(dp.flags & wivrn::from_headset::orientation_valid),
 				                .position_valid = bool(dp.flags & wivrn::from_headset::position_valid),
 				        };
-				        if (tp.orientation_valid)
+				        bool finite=true;
+				        for(float v:tp.pose.orientation) finite &= std::isfinite(v);
+				        for(float v:tp.pose.position) finite &= std::isfinite(v);
+				        if (tp.orientation_valid && finite) {
 					        history[size_t(d)].add(tp);
+					        if(d==Device::head) stats.last_head_received_ns=now_ns();
+				        }
 				        poses.push_back(tp);
 			        }
 			        {
@@ -843,6 +870,67 @@ void WivrnSession::impl::handle(fh::packets && packet)
 			        }
 			        if (listener and not poses.empty())
 				        listener->on_tracking(poses);
+		        }
+		        else if constexpr (std::is_same_v<T, fh::hand_tracking>)
+		        {
+			        if (!clock.stable()) return;
+			        const ns source_age=now_ns()-clock.from_headset(pkt.production_timestamp);
+			        if (source_age > 250'000'000 || source_age < -100'000'000) return;
+			        stats.hand_packets++;
+			        HandTracking hand;
+			        hand.hand = pkt.hand == fh::hand_tracking::left ? 0 : 1;
+			        hand.time = clock.from_headset(pkt.timestamp);
+			        hand.received_at = now_ns();
+			        hand.active = pkt.joints.has_value();
+			        if (pkt.joints) for (size_t i = 0; i < hand.joint.size(); ++i) {
+				        const auto &j = (*pkt.joints)[i];
+				        XrQuaternionf q = j.orientation;
+				        auto &out = hand.joint[i];
+				        out.pose.orientation = {q.x, q.y, q.z, q.w};
+				        out.pose.position = {j.position.x, j.position.y, j.position.z};
+				        out.radius = float(j.radius) / 10000.f;
+				        bool valid = (j.flags & fh::orientation_valid) && (j.flags & fh::position_valid);
+				        for (float v : out.pose.orientation) valid &= std::isfinite(v);
+				        for (float v : out.pose.position) valid &= std::isfinite(v);
+				        out.flags = valid ? 1u : 0u;
+				        if (valid && (j.flags & fh::orientation_tracked) && (j.flags & fh::position_tracked)) out.flags |= 2u;
+				        hand.active &= valid;
+			        }
+			        if (listener) listener->on_hand(hand);
+		        }
+		        else if constexpr (std::is_same_v<T, fh::meta_body>)
+		        {
+			        if (!clock.stable()) return;
+			        const ns source_age=now_ns()-clock.from_headset(pkt.production_timestamp);
+			        if (source_age > 250'000'000 || source_age < -100'000'000) return;
+			        stats.body_packets++;
+			        BodyTracking body;
+			        body.time=clock.from_headset(pkt.timestamp);body.received_at=now_ns();body.confidence=pkt.confidence;
+			        std::visit([&](const auto &joints) {
+				        using J=std::decay_t<decltype(joints)>;
+				        if constexpr (!std::is_same_v<J,std::monostate>) {
+					        body.full_body=std::is_same_v<J,fh::meta_body::meta_joints>;
+					        auto append=[&](size_t index,uint32_t tracker) {
+						        if(!index || index>joints.joints.size()) return;
+						        const auto &j=joints.joints[index-1];
+						        if(!(j.flags & fh::orientation_valid) || !(j.flags & fh::position_valid)) return;
+						        XrQuaternionf q=j.orientation;
+						        BodyJoint out;out.tracker=tracker;out.flags=1;
+						        out.pose.orientation={q.x,q.y,q.z,q.w};
+						        out.pose.position={joints.root.position.x+float(j.position.x)/10000.f,
+						                           joints.root.position.y+float(j.position.y)/10000.f,
+						                           joints.root.position.z+float(j.position.z)/10000.f};
+						        body.joint.push_back(out);
+					        };
+					        append(XR_BODY_JOINT_HEAD_FB,0);append(XR_BODY_JOINT_HIPS_FB,1);append(XR_BODY_JOINT_CHEST_FB,2);
+					        append(XR_BODY_JOINT_LEFT_ARM_LOWER_FB,7);append(XR_BODY_JOINT_RIGHT_ARM_LOWER_FB,8);
+					        if(body.full_body) {
+						        append(XR_FULL_BODY_JOINT_LEFT_FOOT_BALL_META,3);append(XR_FULL_BODY_JOINT_RIGHT_FOOT_BALL_META,4);
+						        append(XR_FULL_BODY_JOINT_LEFT_LOWER_LEG_META,5);append(XR_FULL_BODY_JOINT_RIGHT_LOWER_LEG_META,6);
+					        }
+				        }
+			        },pkt.joints);
+			        if(listener) listener->on_body(body);
 		        }
 		        else if constexpr (std::is_same_v<T, fh::feedback>)
 		        {
@@ -933,6 +1021,16 @@ void WivrnSession::impl::handle(fh::packets && packet)
 
 void WivrnSession::impl::run_connection(wivrn::TCP && tcp)
 {
+	int one=1;
+	setsockopt(tcp.get_fd(), SOL_SOCKET, SO_KEEPALIVE, &one, sizeof one);
+	timeval send_timeout{2,0};
+	setsockopt(tcp.get_fd(), SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof send_timeout);
+#ifdef TCP_KEEPALIVE
+	int idle=5, interval=2, count=3;
+	setsockopt(tcp.get_fd(), IPPROTO_TCP, TCP_KEEPALIVE, &idle, sizeof idle);
+	setsockopt(tcp.get_fd(), IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof interval);
+	setsockopt(tcp.get_fd(), IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof count);
+#endif
 	auto ctl = std::make_unique<control_socket>(std::move(tcp));
 	auto strm = std::make_unique<stream_socket>();
 	fh::headset_info_packet hi;
@@ -953,9 +1051,19 @@ void WivrnSession::impl::run_connection(wivrn::TCP && tcp)
 		listener->on_connected(*info);
 
 	auto next_sync = std::chrono::steady_clock::now();
+	auto next_tracking_refresh = next_sync + std::chrono::seconds(2);
+	stats.last_head_received_ns=0;
 	while (not quit)
 	{
 		auto now = std::chrono::steady_clock::now();
+		if(now >= next_tracking_refresh) {
+			next_tracking_refresh=now+std::chrono::seconds(2);
+			auto head_at=stats.last_head_received_ns.load();
+			if(!head_at || now_ns()-head_at>1'000'000'000) {
+				control->send(th::tracking_control{tracking_request});
+				stats.tracking_refreshes++;
+			}
+		}
 		if (now >= next_sync)
 		{
 			next_sync = now + std::chrono::milliseconds(clock.interval());
@@ -1110,7 +1218,11 @@ void WivrnSession::impl::send_frame_eye(int eye, const Frame & f, uint64_t wire,
 		}
 		catch (...)
 		{
-			// network errors are handled by the receive loop
+			// A partial TCP message cannot be resumed as a new message: that corrupts the
+			// encrypted framing. Wake the receive loop and reconnect instead of silently
+			// counting a failed send as a displayed frame.
+			if (on_control && control) ::shutdown(control->get_fd(), SHUT_RDWR);
+			return;
 		}
 		stats.bytes_sent += next - begin;
 		++shard.shard_idx;

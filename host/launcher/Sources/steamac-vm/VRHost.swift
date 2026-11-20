@@ -82,6 +82,7 @@ enum VRHost {
         if o.vrForceSRGB { a.append("--force-srgb") }
         if o.vrKeyframeInterval > 0 { a += ["--keyframe-interval", String(format: "%g", o.vrKeyframeInterval)] }
         if o.vrTCPOnly { a.append("--tcp-only") }
+        if o.vrGameAppID == 438100 && !o.vrVirtualDesktop { a += ["--body-osc-port", "19000"] }
         // Virtual Desktop: its own pairing (no PIN) and spacewarp as set on the headset
         if o.vrVirtualDesktop { a += ["--adapter", "vd", "--vd-ssw", "headset"] }
         if o.vrGameAppID > 0 { a += ["--app", "\(o.vrGameAppID)=\(gameName(o.vrGameAppID, known: o.vrGameName))"] }
@@ -256,7 +257,7 @@ enum VRSelfTest {
         check(Options.vrArg(false) == nil, "VR off must add no kernel key")
         var enc = Options()
         check(VRHost.hostArgs(enc, controlSocket: "/s") == ["--control-socket", "/s", "--bitrate", "50000000",
-                                                            "--pair-on-request", "--app", "438100=VRChat"],
+                                                            "--pair-on-request", "--body-osc-port", "19000", "--app", "438100=VRChat"],
               "default host arguments: \(VRHost.hostArgs(enc, controlSocket: "/s"))")
         enc.vrBitrateMbps = 80
         enc.vrEyeSize = "1440x1584"

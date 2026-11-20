@@ -37,6 +37,9 @@ public:
 	struct Counters
 	{
 		uint64_t frames_sent = 0, idr_sent = 0, idr_requests = 0, bytes_sent = 0;
+		uint64_t tracking_packets = 0, hand_packets = 0, body_packets = 0;
+		int64_t tracking_received_ns = 0, tracking_source_ns = 0, head_received_ns = 0;
+		uint64_t tracking_refreshes = 0;
 		int64_t last_encode_ns = 0, last_decode_ns = 0; // decode: headset-reported, 0 = unknown
 	};
 

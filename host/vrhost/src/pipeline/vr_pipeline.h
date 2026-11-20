@@ -15,6 +15,7 @@
 #include "vrlink.h"
 #include "session/frames_in_flight.h"
 #include "session/vr_session.h"
+#include "session/body_osc.h"
 
 #include <array>
 #include <functional>
@@ -50,6 +51,7 @@ private:
 struct PipelineStats
 {
 	std::atomic<uint64_t> received{0}, submitted{0}, no_headset{0};
+	std::atomic<uint64_t> poses_forwarded{0}, hands_forwarded{0}, body_osc_packets{0}, pose_send_failures{0};
 	std::atomic<int64_t> last_compose_gpu_ns{0}, last_latency_ns{0}; // app submit -> encoded + sent
 };
 
@@ -69,7 +71,7 @@ public:
 	// the next one are copied except N-1 of them (2: the game's CPU work overlaps the GPU work of one frame);
 	// FramesInFlight::adaptive = auto.
 	VrPipeline(VrSession & session, int link_fd, const std::string & mach_name, CompositorOptions opt = {},
-	           uint32_t frames_in_flight = 0);
+	           uint32_t frames_in_flight = 0, uint16_t body_osc_port = 0);
 	~VrPipeline() override;
 	bool peer_closed() const;
 	const PipelineStats & stats() const { return st; }
@@ -78,6 +80,9 @@ public:
 	// SessionListener
 	void on_connected(const HeadsetInfo &) override;
 	void on_disconnected() override;
+	void on_tracking(std::span<const TrackedPose>) override;
+	void on_hand(const HandTracking &) override;
+	void on_body(const BodyTracking &) override;
 	void on_input(std::span<const InputValue>) override;
 	void on_refresh_rate(float hz) override;
 
@@ -99,6 +104,7 @@ private:
 	void send_input();
 	void frame_clock();
 	VrSession & session;
+	BodyOsc body_osc;
 	std::mutex m;
 	uint32_t w = 0, h = 0, up_w = 0;
 	bool vd_fov = false;
@@ -116,6 +122,7 @@ private:
 	std::atomic<bool> quit{false};
 	std::atomic<uint64_t> timings{0}, haptics{0};
 	std::atomic<float> refresh{0};
+	std::atomic<int64_t> next_display{0}, last_pose_push{0};
 	FramesInFlight in_flight;
 	std::unique_ptr<VrLinkServer> server; // after the state its threads use
 	std::thread clock;                     // last: started when everything else exists

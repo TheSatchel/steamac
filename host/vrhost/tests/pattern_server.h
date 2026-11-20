@@ -47,12 +47,12 @@ struct Server
 		cfg.log = [](const std::string & s) { printf("[server] %s\n", s.c_str()); };
 		return cfg;
 	}
-	explicit Server(WivrnConfig cfg, vra_region * audio_region = nullptr) :
+	explicit Server(WivrnConfig cfg, vra_region * audio_region = nullptr, SessionListener *listener = nullptr) :
 	        session(local(std::move(cfg)))
 	{
 		if (audio_region)
-			audio = std::make_unique<AudioBridge>(audio_region, session, nullptr);
-		session.start(audio.get());
+			audio = std::make_unique<AudioBridge>(audio_region, session, listener);
+		session.start(audio ? audio.get() : listener);
 		producer = std::thread([this] {
 			TestPattern pattern;
 			std::array<CVPixelBufferRef, 2> bufs{};

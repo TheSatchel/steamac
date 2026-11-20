@@ -67,7 +67,9 @@ struct WivrnConfig
 struct WivrnStats
 {
 	std::atomic<uint64_t> paired{0}, frames_sent{0}, idr_sent{0}, idr_requests{0}, feedback{0}, tracking{0}, timesync{0},
-	        bytes_sent{0}, audio_packets{0}, mic_packets{0}, haptics{0};
+	        bytes_sent{0}, audio_packets{0}, mic_packets{0}, haptics{0}, hand_packets{0}, body_packets{0};
+	std::atomic<int64_t> last_tracking_received_ns{0}, last_tracking_source_ns{0}, last_head_received_ns{0};
+	std::atomic<uint64_t> tracking_refreshes{0};
 	std::atomic<int64_t> last_encode_ns{0};
 	std::atomic<int64_t> last_feedback_decode_ns{0}; // received_from_decoder - received_first_packet, headset clock
 };

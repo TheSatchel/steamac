@@ -21,6 +21,7 @@
 #include "vrlink.h"
 #include "steamac_vr_guest.h"
 #include "wmtr_vr.h"
+#include "wmtr_pose.h"
 
 _Static_assert(VRL_INPUT_COUNT == SVR_IN_COUNT, "vrlink.h and the guest protocol disagree on input ids");
 _Static_assert((int)VRL_DEV_COUNT == (int)SVR_DEV_COUNT && sizeof(struct vrl_pose) == sizeof(struct svr_pose), "pose layout");
@@ -64,6 +65,7 @@ struct wmtr_vr {
   struct vrl_timing timing;
   struct wmtr_vr_cadence cadence; /* SVR_FRAME ids/times (wmtr_vr_frame_cadence), under `lock` */
   struct vrl_poses poses;
+  struct vrl_hand hand[2];
   struct vrl_input input;
   _Atomic uint64_t queries, haptics;
   _Atomic int have_state; /* a VRL_STATE arrived on this link */
@@ -81,6 +83,9 @@ struct wmtr_vr {
 #define VR_STATE_WAIT_NS 250000000ll
 #define VR_STATE_ASK_NS 50000000ll
 #define VR_STATE_WAIT_AGAIN_NS 2000000000ll
+
+_Static_assert(sizeof(struct vrl_hand) <= 2048, "hand packet exceeds local datagram limit");
+_Static_assert(sizeof(struct vrl_hand_joint) == sizeof(struct svr_hand_joint), "hand joint ABI");
 
 _Static_assert(WMTR_VR_FRAME_FROM_PACER == SVR_FRAME_FROM_PACER && WMTR_VR_FRAME_PACER_LIVE == SVR_FRAME_PACER_LIVE,
                "cadence flags are the guest's SVR_FRAME_* flags");
@@ -210,11 +215,18 @@ drain_releases(struct wmtr_vr *vr) {
     case VRL_STATE:
       if (n == sizeof u.s) {
         vr->state = u.s;
+        if (!u.s.connected) memset(vr->hand, 0, sizeof vr->hand);
         atomic_store(&vr->have_state, 1);
       }
       break;
     case VRL_TIMING: if (n == sizeof u.t) vr->timing = u.t; break;
     case VRL_POSES: if (n == sizeof u.p) vr->poses = u.p; break;
+    case VRL_HAND:
+      if (n == sizeof(struct vrl_hand)) {
+        const struct vrl_hand *h = (const void *)&u;
+        if (h->hand < 2 && h->time >= vr->hand[h->hand].time) vr->hand[h->hand] = *h;
+      }
+      break;
     case VRL_INPUT: if (n == sizeof u.i) vr->input = u.i; break;
     default: break;
     }
@@ -297,6 +309,7 @@ query_locked(struct wmtr_vr *vr, void *buf, uint32_t size) {
     if (q->size != sizeof(struct svr_hello_req) || size < sizeof(struct svr_hello_rep)) return STATUS_INVALID_PARAMETER;
     struct svr_hello_rep r = {{SVR_HELLO, sizeof r}};
     r.version = SVR_VERSION;
+    r.pad = SVR_CAP_HAND_JOINTS;
     r.connected = connected;
     if (st) {
       r.eye_width = st->eye_width, r.eye_height = st->eye_height, r.refresh_hz = st->refresh_hz, r.profile = st->profile;
@@ -328,13 +341,31 @@ query_locked(struct wmtr_vr *vr, void *buf, uint32_t size) {
     if (st) r.profile = st->profile, fill_view(st, r.fov, &r.ipd_m);
     if (vr && vr->poses.time) {
       memcpy(r.pose, vr->poses.pose, sizeof r.pose);
-      r.pose_time = vr->poses.time;
+      for (int i=0;i<SVR_DEV_COUNT;++i) wmtr_predict_pose(&r.pose[i],vr->poses.time,disp);
+      r.pose_time = disp;
     } else {
       r.pose_time = disp;
     }
     if (vr && vr->input.time) {
       memcpy(r.input, vr->input.value, sizeof r.input);
       if (vr->input.profile) r.profile = vr->input.profile;
+    }
+    memcpy(buf, &r, sizeof r);
+    return STATUS_SUCCESS;
+  }
+  case SVR_HAND: {
+    if (q->size != sizeof(struct svr_hand_req) || size < sizeof(struct svr_hand_rep)) return STATUS_INVALID_PARAMETER;
+    uint32_t hand = ((struct svr_hand_req *)buf)->hand;
+    if (hand >= 2) return STATUS_INVALID_PARAMETER;
+    struct svr_hand_rep r = {{SVR_HAND, sizeof r}};
+    r.host_now = now_ns();
+    r.hand = hand;
+    if (vr) {
+      const struct vrl_hand *h = &vr->hand[hand];
+      r.time = h->time; r.received_at = h->received_at;
+      r.active = connected && h->active && h->received_at > 0 && r.host_now >= h->received_at
+                 && r.host_now - h->received_at <= 200000000ll;
+      memcpy(r.joint, h->joint, sizeof r.joint);
     }
     memcpy(buf, &r, sizeof r);
     return STATUS_SUCCESS;

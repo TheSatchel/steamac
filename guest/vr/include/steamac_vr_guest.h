@@ -23,6 +23,7 @@ enum svr_op {
   SVR_HELLO = 1,  /* svr_hello_req   -> svr_hello_rep */
   SVR_FRAME = 2,  /* svr_frame_req   -> svr_frame_rep: timing + poses + input snapshot */
   SVR_SUBMIT = 3, /* svr_submit_req  -> svr_ack: both eyes of one frame */
+  SVR_HAND = 5,   /* svr_hand_req -> svr_hand_rep; additive, old exporters reject it */
   SVR_HAPTIC = 4, /* svr_haptic_req  -> svr_ack */
 };
 
@@ -93,6 +94,8 @@ struct svr_hello_req {
   char app_key[64]; /* OpenVR app key or executable name, for host logs */
 };
 
+#define SVR_CAP_HAND_JOINTS 1u /* capabilities carried in the ABI-reserved hello pad */
+
 struct svr_hello_rep {
   struct svr_hdr h;
   uint32_t version;
@@ -102,7 +105,7 @@ struct svr_hello_rep {
   float ipd_m;
   float fov[2][4]; /* per eye: left, right, up, down in radians (OpenXR: left/down negative) */
   uint32_t profile; /* enum svr_profile */
-  uint32_t pad;
+  uint32_t pad; /* capability flags; old exporters leave zero */
   char name[64]; /* headset model, e.g. "Quest 3" */
 };
 
@@ -156,6 +159,29 @@ struct svr_wmtvr_submit {
 struct svr_submit_req {
   struct svr_hdr h;
   struct svr_wmtvr_submit info;
+};
+
+
+#define SVR_HAND_JOINTS 26
+struct svr_hand_joint {
+  float orientation[4];
+  float position[3];
+  float radius;
+  uint32_t flags;
+};
+struct svr_hand_req {
+  struct svr_hdr h;
+  uint32_t hand;
+  uint32_t pad;
+};
+struct svr_hand_rep {
+  struct svr_hdr h;
+  int64_t host_now;
+  int64_t time;
+  int64_t received_at;
+  uint32_t hand;
+  uint32_t active;
+  struct svr_hand_joint joint[SVR_HAND_JOINTS];
 };
 
 struct svr_haptic_req {

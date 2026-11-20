@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "runtime.h"
+#include "tracked_hand.h"
 
 #include <errno.h>
 #include <string.h>
@@ -73,6 +74,7 @@ vr::EVRInitError Runtime::init(vr::EVRApplicationType type) {
 }
 
 void Runtime::shutdown() {
+  std::lock_guard<std::mutex> serial(hand_poll_mutex_);
   std::lock_guard<std::mutex> g(m_);
   if (pending_valid_) flush_submit_locked();
   transport_.reset();
@@ -143,6 +145,47 @@ bool Runtime::fetch(svr_frame_rep *out) {
     }
   }
   if (out) *out = rep;
+  return true;
+}
+
+void Runtime::poll_hands() {
+  std::lock_guard<std::mutex> serial(hand_poll_mutex_);
+  { std::lock_guard<std::mutex> lock(m_);
+    if (!(hello_.pad & SVR_CAP_HAND_JOINTS)) { hands_[0].active=hands_[1].active=0; return; }
+  }
+  int64_t now = now_ns();
+  if (now-last_hand_poll_ < 4000000) return;
+  last_hand_poll_=now;
+  for (uint32_t h=0; h<2; ++h) {
+    svr_hand_req req{{SVR_HAND,sizeof(req)},h,0}; svr_hand_rep rep{};
+    int result = transport_ ? transport_->call(&req.h,&rep.h,sizeof(rep)) : -1;
+    std::lock_guard<std::mutex> lock(m_);
+    if (!result && rep.h.op==SVR_HAND && rep.h.size==sizeof(rep) && rep.hand==h) {
+      if (!rep.received_at || rep.host_now < rep.received_at || rep.host_now-rep.received_at>200000000) rep.active=0;
+      hands_[h]=rep;
+    } else hands_[h].active=0;
+  }
+}
+
+bool Runtime::tracked_hand(int hand, vr::VRBoneTransform_t *out) {
+  if (hand<0 || hand>1) return false;
+  poll_hands();
+  std::lock_guard<std::mutex> lock(m_);
+  const auto &h=hands_[hand];
+  if (!h.active) return false;
+  vr::VRBoneTransform_t bones[kHandBoneCount];
+  int d=hand ? SVR_DEV_RIGHT_GRIP : SVR_DEV_LEFT_GRIP;
+  float dt=std::clamp(float(h.time-latest_.pose_time)*1e-9f,-0.1f,0.1f);
+  svr_pose grip=extrapolate(latest_.pose[d],dt);
+  if (!tracked_hand_bones(h,grip,bones)) return false;
+  if(out) std::copy(bones,bones+kHandBoneCount,out);
+  return true;
+}
+
+bool Runtime::tracked_hand_summary(int hand, vr::VRSkeletalSummaryData_t &out) {
+  if (!tracked_hand(hand)) return false;
+  std::lock_guard<std::mutex> lock(m_);
+  svr::tracked_hand_summary(hands_[hand],out);
   return true;
 }
 

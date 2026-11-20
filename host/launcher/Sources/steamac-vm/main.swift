@@ -99,7 +99,7 @@ if let f = Supervisor.windowFrame, !f.isEmpty, !options.headless {
 
 // MARK: VM process (one boot)
 
-let windowTitle = "FX Steam Launcher"
+let windowTitle = "Satchel Steam Launcher"
 
 /// Graceful shutdown policy shared by window close, menu, signals and the console escape; window
 /// close / menu Suspend / Dock click / Quit while suspended (SuspendController).

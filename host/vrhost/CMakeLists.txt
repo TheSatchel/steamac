@@ -103,6 +103,7 @@ target_link_options(wivrn-pacer PUBLIC -fexperimental-library)
 add_library(vrhost-core STATIC
 	src/session/clock.cpp
 	src/session/pose_history.cpp
+	src/session/body_osc.cpp
 	src/audio/pcm.cpp
 	src/audio/audio_bridge.cpp
 	src/wivrn/wivrn_session.cpp
@@ -170,6 +171,13 @@ set_tests_properties(vd_foveation PROPERTIES TIMEOUT 120)
 add_executable(vrhost-test-vd tests/test_vd_tool.mm tests/fake_vd_client.cpp tests/vt_decode.mm)
 set_source_files_properties(tests/test_vd_tool.mm PROPERTIES COMPILE_FLAGS -fobjc-arc)
 target_link_libraries(vrhost-test-vd PRIVATE vrhost-core "-framework Foundation")
+add_executable(test_tracking_packets tests/test_tracking_packets.cpp tests/fake_headset.cpp tests/vt_decode.mm)
+target_link_libraries(test_tracking_packets PRIVATE vrhost-core)
+add_test(NAME tracking_packets COMMAND test_tracking_packets)
+set_tests_properties(tracking_packets PROPERTIES TIMEOUT 45)
+add_executable(test_body_osc tests/test_body_osc.cpp)
+target_link_libraries(test_body_osc PRIVATE vrhost-core)
+add_test(NAME body_osc COMMAND test_body_osc)
 add_executable(test_vrlink_validate tests/test_vrlink_validate.cpp src/compositor/foveation_params.cpp)
 target_link_libraries(test_vrlink_validate PRIVATE vrhost-core)
 add_test(NAME vrlink_validate COMMAND test_vrlink_validate)
@@ -187,6 +195,10 @@ if(VRHOST_DXMT_DIR)
 	add_library(vrhost-test-exporter STATIC ${wmtr_dir}/src/wmtr_vr.m)
 	target_include_directories(vrhost-test-exporter PRIVATE include ${wmtr_dir}/include ${CMAKE_CURRENT_SOURCE_DIR}/../../guest/vr/include ${VRHOST_DXMT_DIR}/src/winemetal)
 	target_compile_options(vrhost-test-exporter PRIVATE -w)
+	add_executable(test_tracking_bridge tests/test_tracking_bridge.mm)
+	target_include_directories(test_tracking_bridge PRIVATE ${wmtr_dir}/include ${CMAKE_CURRENT_SOURCE_DIR}/../../guest/vr/include)
+	target_link_libraries(test_tracking_bridge PRIVATE vrhost-core vrhost-compositor vrhost-test-exporter "-framework Metal")
+	add_test(NAME tracking_bridge COMMAND test_tracking_bridge)
 	add_executable(test_vr_e2e tests/test_vr_e2e.mm tests/fake_headset.cpp tests/vt_decode.mm)
 	target_include_directories(test_vr_e2e PRIVATE ${wmtr_dir}/include ${CMAKE_CURRENT_SOURCE_DIR}/../../guest/vr/include ${VRHOST_DXMT_DIR}/src/winemetal)
 	set_source_files_properties(tests/test_vr_e2e.mm PROPERTIES COMPILE_FLAGS -fobjc-arc)

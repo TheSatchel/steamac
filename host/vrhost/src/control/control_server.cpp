@@ -242,6 +242,8 @@ std::string ControlServer::status()
 		         info->render_eye_height, current > 0 ? current : info->preferred_refresh_rate, rates.c_str(),
 		         control.codec_name().c_str());
 		out += num;
+		out += ",\"hand_tracking_capable\":" + std::string(info->hand_tracking ? "true" : "false")
+		       + ",\"body_tracking_capable\":" + std::string(info->body_tracking ? "true" : "false");
 		if (auto b = control.battery())
 		{
 			snprintf(num, sizeof num, ",\"battery\":{\"charge\":%.2f,\"charging\":%s}", b->charge, b->charging ? "true" : "false");
@@ -258,6 +260,12 @@ std::string ControlServer::status()
 		out += ",\"pairing_request\":null";
 	auto app = control.app_request();
 	out += ",\"app_request\":{\"id\":" + json_string(app.id) + ",\"seq\":" + std::to_string(app.seq) + "}";
+	out += ",\"tracking\":{\"packets\":" + std::to_string(c.tracking_packets)
+	       + ",\"hand_packets\":" + std::to_string(c.hand_packets) + ",\"body_packets\":" + std::to_string(c.body_packets)
+	       + ",\"receive_age_ms\":" + (c.tracking_received_ns ? std::to_string(std::max<int64_t>(0, now-c.tracking_received_ns)/1000000) : "null")
+	       + ",\"head_age_ms\":" + (c.head_received_ns ? std::to_string(std::max<int64_t>(0, now-c.head_received_ns)/1000000) : "null")
+	       + ",\"refresh_requests\":" + std::to_string(c.tracking_refreshes)
+	       + ",\"source_age_ms\":" + (c.tracking_source_ns ? std::to_string((now-c.tracking_source_ns)/1000000) : "null") + "}";
 	double pipeline = hooks.pipeline_latency_ms ? hooks.pipeline_latency_ms() : 0;
 	snprintf(num, sizeof num,
 	         ",\"stream\":{\"frames\":%" PRIu64 ",\"bitrate_mbps\":%.1f,\"target_mbps\":%.1f,\"encode_ms\":%.2f,"
