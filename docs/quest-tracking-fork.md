@@ -54,7 +54,7 @@ The first live trial confirmed improved head latency and real finger motion, but
 
 ### Native tracker protocol
 
-`SVR_CAP_BODY_TRACKERS` gates the additive `SVR_BODY` query. `VRL_BODY` carries at most eight valid poses (hips, chest, feet, knees, elbows) in the same OpenXR/OpenVR stage coordinates as the HMD. The guest exposes them as OpenVR device indices 3–10, class `GenericTracker`, with stable `satchel-body-N` serials. Freshness expires after 200 ms and device activation/deactivation events follow the valid mask. Existing frame and hand message layouts remain unchanged.
+`SVR_CAP_BODY_TRACKERS` gates the additive `SVR_BODY` query. `VRL_BODY` carries at most eight valid poses (hips, chest, feet, knees, elbows) in the same OpenXR/OpenVR stage coordinates as the HMD. The guest exposes them as OpenVR device indices 3–10, class `GenericTracker`, with stable `satchel-body-N` serials. Freshness expires after 200 ms. Once discovered, a device remains connected through temporary pose loss and disconnects with the headset; pose validity follows the current mask. Existing frame and hand message layouts remain unchanged.
 
 The 0.1.1 development build replaced the launcher’s default OSC body path with native trackers. Optional OSC output remains available through its explicit host argument. The user confirmed that head latency improved and that finger tracking works, but reported jitter, loss-related drift and no body following. Quest logs showed `xrLocateBodyJointsFB` failing with `XR_ERROR_INITIALIZATION_FAILED`; restarting the WiVRn client restored all eight body validity bits, but the user still reported no avatar body following. Valid packets alone are not acceptance.
 
@@ -67,3 +67,5 @@ The 0.1.1 development build replaced the launcher’s default OSC body path with
 - Optional `STEAMAC_VR_LOG=1` diagnostics report whether the game reads native body poses and whether hip coordinates change. Logs remain local.
 
 Real avatar body following and loss/reacquisition behavior still require in-headset verification after installing this build.
+
+The 0.1.2 build was installed with runtime SHA-256 `e62324c41eff349b7f41b23825fe49ccf8f2b2c35d8d9f5a17677be3e33acfc8`. Host pose-history, tracking-packet, tracking-bridge and VR end-to-end tests passed. Under FEX, 543 unit checks, native body loss/recovery, Touch/Index title-style reads, standby, live-view and pacing regressions passed. The app's two-round VR startup/self-test and code-signature verification passed. Live VRChat logs then showed `mask=ff`, 14,688–20,112 body-pose reads per five seconds, changing hip coordinates and 4.5–7.7 ms body-packet age. VRChat entered a world again. These measurements prove transport/runtime delivery, not avatar calibration or user-visible tracking acceptance.
