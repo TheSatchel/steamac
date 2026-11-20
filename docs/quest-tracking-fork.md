@@ -51,3 +51,9 @@ The Steam VR launch selector is case-sensitive in this installation: use `/VR`. 
 ## Native body / hand stability update
 
 The first live trial confirmed improved head latency and real finger motion, but exposed hand jitter and an unavailable VRChat OSC receiver. The next build adds adaptive smoothing only in the hand skeleton's parent-local coordinates, without filtering the HMD/grip poses, and exposes body data as native OpenVR GenericTracker devices. The FEX runtime test discovers the expected four upper-body trackers and no invented feet. Physical calibration and avatar behavior remain to be verified.
+
+### Native tracker protocol
+
+`SVR_CAP_BODY_TRACKERS` gates the additive `SVR_BODY` query. `VRL_BODY` carries at most eight valid poses (hips, chest, feet, knees, elbows) in the same OpenXR/OpenVR stage coordinates as the HMD. The guest exposes them as OpenVR device indices 3–10, class `GenericTracker`, with stable `satchel-body-N` serials. Freshness expires after 200 ms and device activation/deactivation events follow the valid mask. Existing frame and hand message layouts remain unchanged.
+
+The 0.1.1 development build is installed locally. It replaces the launcher’s default OSC body path with native trackers. Optional OSC output remains available through its explicit host argument. The user confirmed that head latency improved and that finger tracking works, but reported jitter; parent-local adaptive filtering was added and validated synthetically. Final finger/body feedback after this update is pending.
